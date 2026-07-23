@@ -5,7 +5,7 @@
 const API_KEY = "AIzaSyCzX3_-OPo7oiDpBNmUS5mLBdzBBSFDsfc";
 
 const VIDEO_URL =
-    "https://www.youtube.com/live/WnN_epmXuls?si=sy8SdOinAIhss8n2";
+    "WnN_epmXuls";
 
 
 // =====================================
