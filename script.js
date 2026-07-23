@@ -1,106 +1,406 @@
-// =====================================
-// إعدادات الموقع
-// =====================================
+// =====================================================
+// إعدادات YouTube
+// =====================================================
 
-const API_KEY = "AIzaSyCzX3_-OPo7oiDpBNmUS5mLBdzBBSFDsfc";
+const YOUTUBE_API_KEY =
+    "AIzaSyCzX3_-OPo7oiDpBNmUS5mLBdzBBSFDsfc";
 
-const VIDEO_ID = "WnN_epmXuls";
+const VIDEO_ID =
+    "WnN_epmXuls";
 
 
-// =====================================
-// المتغيرات
-// =====================================
+// =====================================================
+// إعدادات Supabase
+// =====================================================
+
+const SUPABASE_URL =
+    "https://urpwmgntrdzooemnvccx.supabase.co";
+
+const SUPABASE_KEY =
+    "ضع_مفتاح_Supabase_Publishable_هنا";
+
+
+// =====================================================
+// إنشاء اتصال Supabase
+// =====================================================
+
+const supabaseClient =
+    window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
+    );
+
+
+// =====================================================
+// عناصر الصفحة
+// =====================================================
+
+const liveChatElement =
+    document.getElementById("liveChat");
+
+const archiveChatElement =
+    document.getElementById("archiveChat");
+
+const statusElement =
+    document.getElementById("status");
+
+const archiveCountElement =
+    document.getElementById("archiveCount");
+
+
+// =====================================================
+// متغيرات النظام
+// =====================================================
 
 let liveChatId = null;
+
 let nextPageToken = null;
 
-
-// =====================================
-// عناصر الصفحة
-// =====================================
-
-const chatElement = document.getElementById("chat");
-const statusElement = document.getElementById("status");
+let archiveCount = 0;
 
 
-// =====================================
-// إضافة رسالة إلى الصفحة
-// =====================================
+// =====================================================
+// إضافة رسالة إلى واجهة البث المباشر
+// =====================================================
 
-function addMessage(author, message) {
+function addLiveMessage(
+    author,
+    message
+) {
 
-    const messageElement = document.createElement("div");
-    messageElement.className = "message";
+    const element =
+        createMessageElement(
+            author,
+            message
+        );
 
-    const authorElement = document.createElement("div");
-    authorElement.className = "author";
-    authorElement.textContent = author;
+    liveChatElement.appendChild(
+        element
+    );
 
-    const textElement = document.createElement("div");
-    textElement.className = "text";
-    textElement.textContent = message;
-
-    messageElement.appendChild(authorElement);
-    messageElement.appendChild(textElement);
-
-    chatElement.appendChild(messageElement);
-
-    // التمرير إلى آخر رسالة
-    chatElement.scrollTop = chatElement.scrollHeight;
+    liveChatElement.scrollTop =
+        liveChatElement.scrollHeight;
 }
 
 
-// =====================================
+// =====================================================
+// إضافة رسالة إلى واجهة الأرشيف
+// =====================================================
+
+function addArchiveMessage(
+    author,
+    message,
+    prepend = false
+) {
+
+    const element =
+        createMessageElement(
+            author,
+            message
+        );
+
+    if (prepend) {
+
+        archiveChatElement.prepend(
+            element
+        );
+
+    } else {
+
+        archiveChatElement.appendChild(
+            element
+        );
+    }
+
+    archiveCount++;
+
+    archiveCountElement.textContent =
+        archiveCount +
+        " رسالة";
+}
+
+
+// =====================================================
+// إنشاء عنصر رسالة
+// =====================================================
+
+function createMessageElement(
+    author,
+    message
+) {
+
+    const messageElement =
+        document.createElement(
+            "div"
+        );
+
+    messageElement.className =
+        "message";
+
+
+    const authorElement =
+        document.createElement(
+            "div"
+        );
+
+    authorElement.className =
+        "author";
+
+    authorElement.textContent =
+        author;
+
+
+    const textElement =
+        document.createElement(
+            "div"
+        );
+
+    textElement.className =
+        "text";
+
+    textElement.textContent =
+        message;
+
+
+    messageElement.appendChild(
+        authorElement
+    );
+
+    messageElement.appendChild(
+        textElement
+    );
+
+
+    return messageElement;
+}
+
+
+// =====================================================
+// حفظ الرسالة في Supabase
+// =====================================================
+
+async function saveMessageToSupabase(
+    youtubeMessageId,
+    author,
+    message
+) {
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from(
+                "live_chat_messages"
+            )
+            .upsert(
+                {
+                    youtube_message_id:
+                        youtubeMessageId,
+
+                    author_name:
+                        author,
+
+                    message:
+                        message,
+
+                    video_id:
+                        VIDEO_ID
+                },
+
+                {
+                    onConflict:
+                        "youtube_message_id"
+                }
+            );
+
+
+    if (error) {
+
+        console.error(
+            "Supabase Error:",
+            error
+        );
+
+        return false;
+    }
+
+
+    return true;
+}
+
+
+// =====================================================
+// تحميل الأرشيف السابق من Supabase
+// =====================================================
+
+async function loadArchive() {
+
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
+            .from(
+                "live_chat_messages"
+            )
+            .select(
+                "youtube_message_id, author_name, message, created_at"
+            )
+            .eq(
+                "video_id",
+                VIDEO_ID
+            )
+            .order(
+                "created_at",
+                {
+                    ascending:
+                        true
+                }
+            );
+
+
+    if (error) {
+
+        console.error(
+            "Archive Error:",
+            error
+        );
+
+        return;
+    }
+
+
+    for (
+        const item of data || []
+    ) {
+
+        addArchiveMessage(
+            item.author_name,
+            item.message
+        );
+    }
+}
+
+
+// =====================================================
+// تشغيل Supabase Realtime
+// =====================================================
+
+function subscribeToArchive() {
+
+    supabaseClient
+        .channel(
+            "live-chat-archive"
+        )
+
+        .on(
+            "postgres_changes",
+
+            {
+                event:
+                    "INSERT",
+
+                schema:
+                    "public",
+
+                table:
+                    "live_chat_messages",
+
+                filter:
+                    `video_id=eq.${VIDEO_ID}`
+            },
+
+            payload => {
+
+                const message =
+                    payload.new;
+
+
+                addArchiveMessage(
+                    message.author_name,
+                    message.message
+                );
+            }
+        )
+
+        .subscribe();
+}
+
+
+// =====================================================
 // الحصول على Live Chat ID
-// =====================================
+// =====================================================
 
 async function getLiveChatId() {
 
     const url =
         "https://www.googleapis.com/youtube/v3/videos" +
+
         "?part=liveStreamingDetails" +
-        "&id=" + encodeURIComponent(VIDEO_ID) +
-        "&key=" + encodeURIComponent(API_KEY);
 
-    const response = await fetch(url);
+        "&id=" +
+        encodeURIComponent(
+            VIDEO_ID
+        ) +
 
-    const data = await response.json();
+        "&key=" +
+        encodeURIComponent(
+            YOUTUBE_API_KEY
+        );
+
+
+    const response =
+        await fetch(
+            url
+        );
+
+
+    const data =
+        await response.json();
+
 
     if (data.error) {
+
         throw new Error(
-            data.error.message ||
-            "حدث خطأ في YouTube API"
+            data.error.message
         );
     }
 
-    if (!data.items || data.items.length === 0) {
+
+    if (
+        !data.items ||
+        data.items.length === 0
+    ) {
+
         throw new Error(
-            "لم يتم العثور على الفيديو"
+            "لم يتم العثور على البث"
         );
     }
+
 
     const liveDetails =
-        data.items[0].liveStreamingDetails;
+        data.items[0]
+            .liveStreamingDetails;
 
-    if (!liveDetails) {
+
+    if (
+        !liveDetails ||
+        !liveDetails.activeLiveChatId
+    ) {
+
         throw new Error(
-            "هذا الفيديو ليس بثًا مباشرًا"
+            "لا توجد دردشة مباشرة نشطة"
         );
     }
 
-    if (!liveDetails.activeLiveChatId) {
-        throw new Error(
-            "لا توجد دردشة مباشرة نشطة لهذا البث"
-        );
-    }
 
     return liveDetails.activeLiveChatId;
 }
 
 
-// =====================================
-// جلب رسائل الدردشة
-// =====================================
+// =====================================================
+// جلب رسائل YouTube
+// =====================================================
 
 async function getChatMessages() {
 
@@ -108,72 +408,125 @@ async function getChatMessages() {
         return;
     }
 
+
     let url =
         "https://www.googleapis.com/youtube/v3/liveChat/messages" +
+
         "?liveChatId=" +
-        encodeURIComponent(liveChatId) +
+        encodeURIComponent(
+            liveChatId
+        ) +
+
         "&part=snippet,authorDetails" +
+
         "&maxResults=200" +
+
         "&key=" +
-        encodeURIComponent(API_KEY);
+        encodeURIComponent(
+            YOUTUBE_API_KEY
+        );
+
 
     if (nextPageToken) {
 
         url +=
             "&pageToken=" +
-            encodeURIComponent(nextPageToken);
+            encodeURIComponent(
+                nextPageToken
+            );
     }
+
 
     try {
 
-        const response = await fetch(url);
+        const response =
+            await fetch(
+                url
+            );
 
-        const data = await response.json();
+
+        const data =
+            await response.json();
+
 
         if (data.error) {
+
             throw new Error(
-                data.error.message ||
-                "حدث خطأ أثناء جلب الرسائل"
+                data.error.message
             );
         }
+
 
         nextPageToken =
-            data.nextPageToken || null;
+            data.nextPageToken ||
+            null;
 
-        // عرض الرسائل الجديدة
-        for (const item of data.items || []) {
+
+        for (
+            const item of
+            data.items || []
+        ) {
 
             const author =
-                item.authorDetails?.displayName ||
+                item.authorDetails
+                    ?.displayName ||
                 "مستخدم";
 
+
             const message =
-                item.snippet?.displayMessage ||
+                item.snippet
+                    ?.displayMessage ||
                 "";
 
-            if (message) {
 
-                addMessage(
-                    author,
-                    message
-                );
+            if (!message) {
+                continue;
             }
+
+
+            // =================================
+            // 1. عرض الرسالة في البث المباشر
+            // =================================
+
+            addLiveMessage(
+                author,
+                message
+            );
+
+
+            // =================================
+            // 2. حفظ الرسالة في Supabase
+            // =================================
+
+            await saveMessageToSupabase(
+
+                item.id,
+
+                author,
+
+                message
+            );
         }
 
-        statusElement.textContent =
-            "متصل — يتم استقبال الرسائل مباشرة";
 
-        // الوقت الذي تقترحه YouTube API
+        statusElement.textContent =
+            "يتم استقبال الرسائل";
+
+
         const delay =
             Math.max(
-                data.pollingIntervalMillis || 5000,
+                data.pollingIntervalMillis ||
+                    5000,
+
                 2000
             );
+
 
         setTimeout(
             getChatMessages,
             delay
         );
+
 
     } catch (error) {
 
@@ -182,11 +535,11 @@ async function getChatMessages() {
             error
         );
 
-        statusElement.textContent =
-            "حدث خطأ: " +
-            error.message;
 
-        // إعادة المحاولة
+        statusElement.textContent =
+            "تعذر الاتصال";
+
+
         setTimeout(
             getChatMessages,
             5000
@@ -195,26 +548,34 @@ async function getChatMessages() {
 }
 
 
-// =====================================
+// =====================================================
 // تشغيل الموقع
-// =====================================
+// =====================================================
 
 async function start() {
 
     try {
 
-        statusElement.textContent =
-            "جاري الاتصال بالبث...";
+        // تحميل الرسائل المحفوظة
+        await loadArchive();
+
+
+        // الاستماع للرسائل الجديدة
+        subscribeToArchive();
+
 
         // الحصول على Live Chat ID
         liveChatId =
             await getLiveChatId();
 
-        statusElement.textContent =
-            "تم الاتصال — جاري استقبال الرسائل...";
 
-        // بدء استقبال الرسائل
+        statusElement.textContent =
+            "متصل";
+
+
+        // بدء قراءة البث
         getChatMessages();
+
 
     } catch (error) {
 
@@ -223,15 +584,15 @@ async function start() {
             error
         );
 
+
         statusElement.textContent =
-            "خطأ: " +
             error.message;
     }
 }
 
 
-// =====================================
-// بدء التشغيل
-// =====================================
+// =====================================================
+// بدء التطبيق
+// =====================================================
 
 start();
