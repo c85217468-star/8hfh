@@ -2,66 +2,123 @@
     box-sizing: border-box;
 }
 
+html,
 body {
     margin: 0;
-    background: #0f0f0f;
-    color: white;
-    font-family: Arial, sans-serif;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+}
+
+body {
+    background: #111111;
+    color: #d6d6d6;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
 .container {
     width: 100%;
-    max-width: 800px;
-    margin: 40px auto;
-    padding: 20px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 16px;
 }
+
+/* العنوان */
 
 h1 {
-    text-align: center;
-    margin-bottom: 20px;
+    margin: 0 0 22px;
+    padding: 0 0 16px;
+
+    font-size: 20px;
+    font-weight: 500;
+
+    color: #eeeeee;
+
+    border-bottom: 1px solid #2b2b2b;
 }
 
+/* حالة الاتصال */
+
 .status {
-    background: #1f1f1f;
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 15px;
-    text-align: center;
-    color: #aaa;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+
+    background: #181818;
+
+    border: 1px solid #272727;
+    border-radius: 6px;
+
+    color: #888888;
+
+    font-size: 13px;
 }
+
+/* منطقة المحادثة */
 
 .chat {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 7px;
+
+    width: 100%;
 }
+
+/* الرسالة */
 
 .message {
-    background: #1b1b1b;
-    padding: 12px 15px;
-    border-radius: 10px;
-    animation: showMessage 0.2s ease;
+    padding: 11px 13px;
+
+    background: #191919;
+
+    border: 1px solid #242424;
+    border-radius: 6px;
+
+    transition: background 0.15s ease;
 }
+
+.message:hover {
+    background: #1e1e1e;
+}
+
+/* اسم المستخدم */
 
 .author {
-    font-weight: bold;
-    color: #4da6ff;
     margin-bottom: 5px;
+
+    color: #bdbdbd;
+
+    font-size: 13px;
+    font-weight: 600;
 }
+
+/* نص الرسالة */
 
 .text {
-    color: #eee;
-    word-wrap: break-word;
+    color: #dedede;
+
+    font-size: 14px;
+    line-height: 1.6;
+
+    overflow-wrap: anywhere;
 }
 
-@keyframes showMessage {
-    from {
-        opacity: 0;
-        transform: translateY(5px);
+/* الهاتف */
+
+@media (max-width: 600px) {
+
+    .container {
+        padding: 16px 10px;
     }
 
-    to {
-        opacity: 1;
-        transform: translateY(0);
+    h1 {
+        font-size: 18px;
+    }
+
+    .message {
+        padding: 10px 11px;
+    }
+
+    .text {
+        font-size: 14px;
     }
 }
