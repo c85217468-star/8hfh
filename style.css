@@ -11,111 +11,210 @@ body {
 }
 
 body {
-    background: #111111;
+    background: #101010;
     color: #d6d6d6;
-    font-family: Arial, Helvetica, sans-serif;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
 }
 
 .container {
     width: 100%;
     max-width: 760px;
+
     margin: 0 auto;
-    padding: 24px 16px;
+
+    padding: 20px 12px;
 }
 
-/* العنوان */
 
-h1 {
-    margin: 0 0 22px;
-    padding: 0 0 16px;
+/* ================================= */
+/* اللوحات */
+/* ================================= */
 
-    font-size: 20px;
-    font-weight: 500;
+.panel {
+    width: 100%;
 
-    color: #eeeeee;
+    margin-bottom: 20px;
 
-    border-bottom: 1px solid #2b2b2b;
+    background: #151515;
+
+    border:
+        1px solid
+        #292929;
+
+    border-radius: 7px;
+
+    overflow: hidden;
 }
 
-/* حالة الاتصال */
 
-.status {
-    margin-bottom: 12px;
-    padding: 10px 12px;
+/* ================================= */
+/* رأس القسم */
+/* ================================= */
+
+.panel-header {
+    display: flex;
+
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 14px 16px;
 
     background: #181818;
 
-    border: 1px solid #272727;
-    border-radius: 6px;
-
-    color: #888888;
-
-    font-size: 13px;
+    border-bottom:
+        1px solid
+        #292929;
 }
 
-/* منطقة المحادثة */
+
+.panel-header h1,
+.panel-header h2 {
+    margin: 0;
+
+    color: #eeeeee;
+
+    font-size: 16px;
+
+    font-weight: 500;
+}
+
+
+.panel-header span {
+    color: #777777;
+
+    font-size: 12px;
+}
+
+
+/* ================================= */
+/* منطقة الرسائل */
+/* ================================= */
 
 .chat {
     display: flex;
+
     flex-direction: column;
-    gap: 7px;
+
+    gap: 6px;
 
     width: 100%;
+
+    max-height: 500px;
+
+    overflow-y: auto;
+
+    padding: 10px;
 }
 
+
+/* ================================= */
 /* الرسالة */
+/* ================================= */
 
 .message {
-    padding: 11px 13px;
+    padding: 10px 12px;
 
-    background: #191919;
+    background: #1a1a1a;
 
-    border: 1px solid #242424;
-    border-radius: 6px;
+    border:
+        1px solid
+        #252525;
 
-    transition: background 0.15s ease;
+    border-radius: 5px;
 }
 
-.message:hover {
-    background: #1e1e1e;
-}
 
+/* ================================= */
 /* اسم المستخدم */
+/* ================================= */
 
 .author {
-    margin-bottom: 5px;
+    margin-bottom: 4px;
 
     color: #bdbdbd;
 
     font-size: 13px;
+
     font-weight: 600;
 }
 
+
+/* ================================= */
 /* نص الرسالة */
+/* ================================= */
 
 .text {
     color: #dedede;
 
     font-size: 14px;
+
     line-height: 1.6;
 
     overflow-wrap: anywhere;
 }
 
+
+/* ================================= */
+/* الأرشيف */
+/* ================================= */
+
+#archiveChat {
+    min-height: 100px;
+}
+
+
+/* ================================= */
+/* البث المباشر */
+/* ================================= */
+
+#liveChat {
+    min-height: 100px;
+}
+
+
+/* ================================= */
+/* شريط التمرير */
+/* ================================= */
+
+.chat::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat::-webkit-scrollbar-track {
+    background: #111111;
+}
+
+.chat::-webkit-scrollbar-thumb {
+    background: #333333;
+
+    border-radius: 4px;
+}
+
+
+/* ================================= */
 /* الهاتف */
+/* ================================= */
 
 @media (max-width: 600px) {
 
     .container {
-        padding: 16px 10px;
+        padding: 10px;
     }
 
-    h1 {
-        font-size: 18px;
+    .panel-header {
+        padding: 12px;
+    }
+
+    .chat {
+        max-height: 450px;
     }
 
     .message {
-        padding: 10px 11px;
+        padding: 9px 10px;
     }
 
     .text {
