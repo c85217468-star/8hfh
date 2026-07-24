@@ -2,8 +2,10 @@
 // إعدادات YouTube
 // =====================================================
 
+// ضع مفتاح YouTube API الجديد هنا
 const YOUTUBE_API_KEY =
     "AIzaSyCzX3_-OPo7oiDpBNmUS5mLBdzBBSFDsfc";
+
 
 const VIDEO_ID =
     "WnN_epmXuls";
@@ -15,6 +17,7 @@ const VIDEO_ID =
 
 const SUPABASE_URL =
     "https://urpwmgntrdzooemnvccx.supabase.co";
+
 
 const SUPABASE_KEY =
     "sb_publishable_RxvIR8pqoTnrc1SSzBmbbQ_7691v21m";
@@ -35,21 +38,56 @@ const supabaseClient =
 // عناصر الصفحة
 // =====================================================
 
+const livePage =
+    document.getElementById(
+        "livePage"
+    );
+
+
+const archivePage =
+    document.getElementById(
+        "archivePage"
+    );
+
+
 const liveChatElement =
-    document.getElementById("liveChat");
+    document.getElementById(
+        "liveChat"
+    );
+
 
 const archiveChatElement =
-    document.getElementById("archiveChat");
+    document.getElementById(
+        "archiveChat"
+    );
+
 
 const statusElement =
-    document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
+
 
 const archiveCountElement =
-    document.getElementById("archiveCount");
+    document.getElementById(
+        "archiveCount"
+    );
+
+
+const openArchiveButton =
+    document.getElementById(
+        "openArchiveButton"
+    );
+
+
+const backToLiveButton =
+    document.getElementById(
+        "backToLiveButton"
+    );
 
 
 // =====================================================
-// المتغيرات
+// متغيرات النظام
 // =====================================================
 
 let liveChatId = null;
@@ -59,13 +97,24 @@ let nextPageToken = null;
 let archiveCount = 0;
 
 
-// منع تكرار الرسائل في الأرشيف
+// =====================================================
+// منع تكرار رسائل الأرشيف
+// =====================================================
+
 const displayedArchiveMessages =
     new Set();
 
 
 // =====================================================
-// إنشاء عنصر الرسالة
+// منع تكرار رسائل البث
+// =====================================================
+
+const displayedLiveMessages =
+    new Set();
+
+
+// =====================================================
+// إنشاء عنصر رسالة
 // =====================================================
 
 function createMessageElement(
@@ -74,27 +123,38 @@ function createMessageElement(
 ) {
 
     const messageElement =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
+
 
     messageElement.className =
         "message";
 
 
     const authorElement =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
+
 
     authorElement.className =
         "author";
+
 
     authorElement.textContent =
         author;
 
 
     const textElement =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
+
 
     textElement.className =
         "text";
+
 
     textElement.textContent =
         message;
@@ -104,12 +164,14 @@ function createMessageElement(
         authorElement
     );
 
+
     messageElement.appendChild(
         textElement
     );
 
 
     return messageElement;
+
 }
 
 
@@ -118,9 +180,26 @@ function createMessageElement(
 // =====================================================
 
 function addLiveMessage(
+    messageId,
     author,
     message
 ) {
+
+    if (
+        displayedLiveMessages.has(
+            messageId
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    displayedLiveMessages.add(
+        messageId
+    );
+
 
     const element =
         createMessageElement(
@@ -136,6 +215,7 @@ function addLiveMessage(
 
     liveChatElement.scrollTop =
         liveChatElement.scrollHeight;
+
 }
 
 
@@ -149,18 +229,20 @@ function addArchiveMessage(
     message
 ) {
 
-    // منع التكرار
     if (
-        displayedArchiveMessages
-            .has(messageId)
+        displayedArchiveMessages.has(
+            messageId
+        )
     ) {
 
         return;
+
     }
 
 
-    displayedArchiveMessages
-        .add(messageId);
+    displayedArchiveMessages.add(
+        messageId
+    );
 
 
     const element =
@@ -181,119 +263,122 @@ function addArchiveMessage(
     archiveCountElement.textContent =
         archiveCount +
         " رسالة";
+
 }
 
 
 // =====================================================
-// حفظ الرسالة في Supabase
+// حفظ مجموعة رسائل في Supabase
 // =====================================================
 
-async function saveMessageToSupabase(
-    youtubeMessageId,
-    author,
-    message
+async function saveMessagesToSupabase(
+    messages
 ) {
 
-    try {
-
-        console.log(
-            "جاري حفظ الرسالة:",
-            youtubeMessageId
-        );
-
-
-        const {
-            data,
-            error
-        } =
-            await supabaseClient
-                .from(
-                    "live_chat_messages"
-                )
-                .upsert(
-
-                    {
-                        youtube_message_id:
-                            youtubeMessageId,
-
-                        author_name:
-                            author,
-
-                        message:
-                            message,
-
-                        video_id:
-                            VIDEO_ID
-                    },
-
-                    {
-                        onConflict:
-                            "youtube_message_id"
-                    }
-                );
-
-
-        if (error) {
-
-            console.error(
-                "Supabase Error:",
-                error
-            );
-
-
-            return false;
-        }
-
-
-        console.log(
-            "تم حفظ الرسالة بنجاح"
-        );
-
+    if (
+        !messages.length
+    ) {
 
         return true;
 
+    }
 
-    } catch (error) {
+
+    const rows =
+        messages.map(
+            item => ({
+
+                youtube_message_id:
+                    item.id,
+
+                author_name:
+                    item.authorDetails
+                        ?.displayName ||
+                    "مستخدم",
+
+                message:
+                    item.snippet
+                        ?.displayMessage ||
+                    "",
+
+                video_id:
+                    VIDEO_ID
+
+            })
+        );
+
+
+    const {
+        error
+    } =
+        await supabaseClient
+
+            .from(
+                "live_chat_messages"
+            )
+
+            .upsert(
+
+                rows,
+
+                {
+
+                    onConflict:
+                        "youtube_message_id",
+
+                    ignoreDuplicates:
+                        true
+
+                }
+
+            );
+
+
+    if (error) {
 
         console.error(
-            "Supabase Connection Error:",
+            "Supabase Error:",
             error
         );
 
 
         return false;
+
     }
+
+
+    return true;
+
 }
 
 
 // =====================================================
-// تحميل الأرشيف من Supabase
+// تحميل الأرشيف القديم
 // =====================================================
 
 async function loadArchive() {
 
     try {
 
-        console.log(
-            "جاري تحميل الأرشيف..."
-        );
-
-
         const {
             data,
             error
         } =
             await supabaseClient
+
                 .from(
                     "live_chat_messages"
                 )
+
                 .select(
                     "youtube_message_id, author_name, message, created_at"
                 )
+
                 .eq(
                     "video_id",
                     VIDEO_ID
                 )
+
                 .order(
                     "created_at",
                     {
@@ -312,12 +397,13 @@ async function loadArchive() {
 
 
             return;
+
         }
 
 
         for (
-            const item of
-            data || []
+            const item
+            of data || []
         ) {
 
             addArchiveMessage(
@@ -329,28 +415,24 @@ async function loadArchive() {
                 item.message
 
             );
+
         }
-
-
-        console.log(
-            "تم تحميل الأرشيف:",
-            data.length,
-            "رسالة"
-        );
 
 
     } catch (error) {
 
         console.error(
-            "Archive Connection Error:",
+            "Archive Load Error:",
             error
         );
+
     }
+
 }
 
 
 // =====================================================
-// Supabase Realtime
+// تشغيل Supabase Realtime
 // =====================================================
 
 function subscribeToArchive() {
@@ -383,12 +465,6 @@ function subscribeToArchive() {
 
             payload => {
 
-                console.log(
-                    "رسالة جديدة من Supabase:",
-                    payload.new
-                );
-
-
                 const message =
                     payload.new;
 
@@ -408,15 +484,18 @@ function subscribeToArchive() {
         )
 
         .subscribe(
+
             status => {
 
                 console.log(
-                    "Supabase Realtime:",
+                    "Realtime:",
                     status
                 );
 
             }
+
         );
+
 }
 
 
@@ -453,11 +532,14 @@ async function getLiveChatId() {
         await response.json();
 
 
-    if (data.error) {
+    if (
+        data.error
+    ) {
 
         throw new Error(
             data.error.message
         );
+
     }
 
 
@@ -469,6 +551,7 @@ async function getLiveChatId() {
         throw new Error(
             "لم يتم العثور على البث"
         );
+
     }
 
 
@@ -485,10 +568,12 @@ async function getLiveChatId() {
         throw new Error(
             "لا توجد دردشة مباشرة نشطة"
         );
+
     }
 
 
     return liveDetails.activeLiveChatId;
+
 }
 
 
@@ -498,9 +583,12 @@ async function getLiveChatId() {
 
 async function getChatMessages() {
 
-    if (!liveChatId) {
+    if (
+        !liveChatId
+    ) {
 
         return;
+
     }
 
 
@@ -523,7 +611,9 @@ async function getChatMessages() {
         );
 
 
-    if (nextPageToken) {
+    if (
+        nextPageToken
+    ) {
 
         url +=
 
@@ -532,6 +622,7 @@ async function getChatMessages() {
             encodeURIComponent(
                 nextPageToken
             );
+
     }
 
 
@@ -547,11 +638,14 @@ async function getChatMessages() {
             await response.json();
 
 
-        if (data.error) {
+        if (
+            data.error
+        ) {
 
             throw new Error(
                 data.error.message
             );
+
         }
 
 
@@ -561,9 +655,29 @@ async function getChatMessages() {
             null;
 
 
+        const messages =
+            data.items || [];
+
+
+        const validMessages =
+
+            messages.filter(
+
+                item =>
+
+                    item.snippet
+                        ?.displayMessage
+
+            );
+
+
+        // =========================================
+        // عرض الرسائل مباشرة في البث
+        // =========================================
+
         for (
-            const item of
-            data.items || []
+            const item
+            of validMessages
         ) {
 
             const author =
@@ -582,51 +696,33 @@ async function getChatMessages() {
                 "";
 
 
-            if (!message) {
+            addLiveMessage(
 
-                continue;
-            }
+                item.id,
 
+                author,
 
-            // =================================
-            // حفظ الرسالة أولًا
-            // =================================
+                message
 
-            const saved =
+            );
 
-                await saveMessageToSupabase(
-
-                    item.id,
-
-                    author,
-
-                    message
-
-                );
-
-
-            // =================================
-            // بعد نجاح الحفظ
-            // عرض الرسالة في البث
-            // =================================
-
-            if (saved) {
-
-                addLiveMessage(
-
-                    author,
-
-                    message
-
-                );
-            }
         }
 
 
-        statusElement.textContent =
+        // =========================================
+        // حفظ الرسائل في Supabase
+        // =========================================
 
-            "يتم استقبال الرسائل";
+        await saveMessagesToSupabase(
 
+            validMessages
+
+        );
+
+
+        // =========================================
+        // الانتظار حسب تعليمات YouTube
+        // =========================================
 
         const delay =
 
@@ -635,7 +731,7 @@ async function getChatMessages() {
                 data.pollingIntervalMillis ||
                     5000,
 
-                2000
+                1000
 
             );
 
@@ -669,11 +765,61 @@ async function getChatMessages() {
 
             getChatMessages,
 
-            5000
+            3000
 
         );
+
     }
+
 }
+
+
+// =====================================================
+// فتح صفحة الأرشيف
+// =====================================================
+
+openArchiveButton.addEventListener(
+
+    "click",
+
+    function () {
+
+        livePage.classList.remove(
+            "active"
+        );
+
+
+        archivePage.classList.add(
+            "active"
+        );
+
+    }
+
+);
+
+
+// =====================================================
+// العودة إلى البث
+// =====================================================
+
+backToLiveButton.addEventListener(
+
+    "click",
+
+    function () {
+
+        archivePage.classList.remove(
+            "active"
+        );
+
+
+        livePage.classList.add(
+            "active"
+        );
+
+    }
+
+);
 
 
 // =====================================================
@@ -684,15 +830,18 @@ async function start() {
 
     try {
 
-        // تحميل الأرشيف
+        // تحميل الأرشيف القديم
+
         await loadArchive();
 
 
         // تشغيل Realtime
+
         subscribeToArchive();
 
 
-        // الحصول على Live Chat ID
+        // الحصول على البث
+
         liveChatId =
 
             await getLiveChatId();
@@ -703,7 +852,8 @@ async function start() {
             "متصل";
 
 
-        // بدء قراءة الرسائل
+        // بدء جلب الرسائل
+
         getChatMessages();
 
 
@@ -721,7 +871,9 @@ async function start() {
         statusElement.textContent =
 
             error.message;
+
     }
+
 }
 
 
