@@ -17,7 +17,7 @@ const SUPABASE_URL =
     "https://urpwmgntrdzooemnvccx.supabase.co";
 
 const SUPABASE_KEY =
-    "ضع_مفتاح_Supabase_Publishable_هنا";
+    "sb_publishable_RxvIR8pqoTnrc1SSzBmbbQ_7691v21m";
 
 
 // =====================================================
@@ -49,7 +49,7 @@ const archiveCountElement =
 
 
 // =====================================================
-// متغيرات النظام
+// المتغيرات
 // =====================================================
 
 let liveChatId = null;
@@ -59,69 +59,13 @@ let nextPageToken = null;
 let archiveCount = 0;
 
 
-// =====================================================
-// إضافة رسالة إلى واجهة البث المباشر
-// =====================================================
-
-function addLiveMessage(
-    author,
-    message
-) {
-
-    const element =
-        createMessageElement(
-            author,
-            message
-        );
-
-    liveChatElement.appendChild(
-        element
-    );
-
-    liveChatElement.scrollTop =
-        liveChatElement.scrollHeight;
-}
+// منع تكرار الرسائل في الأرشيف
+const displayedArchiveMessages =
+    new Set();
 
 
 // =====================================================
-// إضافة رسالة إلى واجهة الأرشيف
-// =====================================================
-
-function addArchiveMessage(
-    author,
-    message,
-    prepend = false
-) {
-
-    const element =
-        createMessageElement(
-            author,
-            message
-        );
-
-    if (prepend) {
-
-        archiveChatElement.prepend(
-            element
-        );
-
-    } else {
-
-        archiveChatElement.appendChild(
-            element
-        );
-    }
-
-    archiveCount++;
-
-    archiveCountElement.textContent =
-        archiveCount +
-        " رسالة";
-}
-
-
-// =====================================================
-// إنشاء عنصر رسالة
+// إنشاء عنصر الرسالة
 // =====================================================
 
 function createMessageElement(
@@ -130,18 +74,14 @@ function createMessageElement(
 ) {
 
     const messageElement =
-        document.createElement(
-            "div"
-        );
+        document.createElement("div");
 
     messageElement.className =
         "message";
 
 
     const authorElement =
-        document.createElement(
-            "div"
-        );
+        document.createElement("div");
 
     authorElement.className =
         "author";
@@ -151,9 +91,7 @@ function createMessageElement(
 
 
     const textElement =
-        document.createElement(
-            "div"
-        );
+        document.createElement("div");
 
     textElement.className =
         "text";
@@ -176,6 +114,77 @@ function createMessageElement(
 
 
 // =====================================================
+// إضافة رسالة للبث المباشر
+// =====================================================
+
+function addLiveMessage(
+    author,
+    message
+) {
+
+    const element =
+        createMessageElement(
+            author,
+            message
+        );
+
+
+    liveChatElement.appendChild(
+        element
+    );
+
+
+    liveChatElement.scrollTop =
+        liveChatElement.scrollHeight;
+}
+
+
+// =====================================================
+// إضافة رسالة للأرشيف
+// =====================================================
+
+function addArchiveMessage(
+    messageId,
+    author,
+    message
+) {
+
+    // منع التكرار
+    if (
+        displayedArchiveMessages
+            .has(messageId)
+    ) {
+
+        return;
+    }
+
+
+    displayedArchiveMessages
+        .add(messageId);
+
+
+    const element =
+        createMessageElement(
+            author,
+            message
+        );
+
+
+    archiveChatElement.appendChild(
+        element
+    );
+
+
+    archiveCount++;
+
+
+    archiveCountElement.textContent =
+        archiveCount +
+        " رسالة";
+}
+
+
+// =====================================================
 // حفظ الرسالة في Supabase
 // =====================================================
 
@@ -185,118 +194,179 @@ async function saveMessageToSupabase(
     message
 ) {
 
-    const {
-        error
-    } =
-        await supabaseClient
-            .from(
-                "live_chat_messages"
-            )
-            .upsert(
-                {
-                    youtube_message_id:
-                        youtubeMessageId,
+    try {
 
-                    author_name:
-                        author,
+        console.log(
+            "جاري حفظ الرسالة:",
+            youtubeMessageId
+        );
 
-                    message:
-                        message,
 
-                    video_id:
-                        VIDEO_ID
-                },
+        const {
+            data,
+            error
+        } =
+            await supabaseClient
+                .from(
+                    "live_chat_messages"
+                )
+                .upsert(
 
-                {
-                    onConflict:
-                        "youtube_message_id"
-                }
+                    {
+                        youtube_message_id:
+                            youtubeMessageId,
+
+                        author_name:
+                            author,
+
+                        message:
+                            message,
+
+                        video_id:
+                            VIDEO_ID
+                    },
+
+                    {
+                        onConflict:
+                            "youtube_message_id"
+                    }
+                );
+
+
+        if (error) {
+
+            console.error(
+                "Supabase Error:",
+                error
             );
 
 
-    if (error) {
+            return false;
+        }
+
+
+        console.log(
+            "تم حفظ الرسالة بنجاح"
+        );
+
+
+        return true;
+
+
+    } catch (error) {
 
         console.error(
-            "Supabase Error:",
+            "Supabase Connection Error:",
             error
         );
 
+
         return false;
     }
-
-
-    return true;
 }
 
 
 // =====================================================
-// تحميل الأرشيف السابق من Supabase
+// تحميل الأرشيف من Supabase
 // =====================================================
 
 async function loadArchive() {
 
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from(
-                "live_chat_messages"
-            )
-            .select(
-                "youtube_message_id, author_name, message, created_at"
-            )
-            .eq(
-                "video_id",
-                VIDEO_ID
-            )
-            .order(
-                "created_at",
-                {
-                    ascending:
-                        true
-                }
+    try {
+
+        console.log(
+            "جاري تحميل الأرشيف..."
+        );
+
+
+        const {
+            data,
+            error
+        } =
+            await supabaseClient
+                .from(
+                    "live_chat_messages"
+                )
+                .select(
+                    "youtube_message_id, author_name, message, created_at"
+                )
+                .eq(
+                    "video_id",
+                    VIDEO_ID
+                )
+                .order(
+                    "created_at",
+                    {
+                        ascending:
+                            true
+                    }
+                );
+
+
+        if (error) {
+
+            console.error(
+                "Archive Error:",
+                error
             );
 
 
-    if (error) {
+            return;
+        }
 
-        console.error(
-            "Archive Error:",
-            error
+
+        for (
+            const item of
+            data || []
+        ) {
+
+            addArchiveMessage(
+
+                item.youtube_message_id,
+
+                item.author_name,
+
+                item.message
+
+            );
+        }
+
+
+        console.log(
+            "تم تحميل الأرشيف:",
+            data.length,
+            "رسالة"
         );
 
-        return;
-    }
 
+    } catch (error) {
 
-    for (
-        const item of data || []
-    ) {
-
-        addArchiveMessage(
-            item.author_name,
-            item.message
+        console.error(
+            "Archive Connection Error:",
+            error
         );
     }
 }
 
 
 // =====================================================
-// تشغيل Supabase Realtime
+// Supabase Realtime
 // =====================================================
 
 function subscribeToArchive() {
 
     supabaseClient
+
         .channel(
             "live-chat-archive"
         )
 
         .on(
+
             "postgres_changes",
 
             {
+
                 event:
                     "INSERT",
 
@@ -308,22 +378,45 @@ function subscribeToArchive() {
 
                 filter:
                     `video_id=eq.${VIDEO_ID}`
+
             },
 
             payload => {
+
+                console.log(
+                    "رسالة جديدة من Supabase:",
+                    payload.new
+                );
+
 
                 const message =
                     payload.new;
 
 
                 addArchiveMessage(
+
+                    message.youtube_message_id,
+
                     message.author_name,
+
                     message.message
+
                 );
+
             }
+
         )
 
-        .subscribe();
+        .subscribe(
+            status => {
+
+                console.log(
+                    "Supabase Realtime:",
+                    status
+                );
+
+            }
+        );
 }
 
 
@@ -334,6 +427,7 @@ function subscribeToArchive() {
 async function getLiveChatId() {
 
     const url =
+
         "https://www.googleapis.com/youtube/v3/videos" +
 
         "?part=liveStreamingDetails" +
@@ -405,11 +499,13 @@ async function getLiveChatId() {
 async function getChatMessages() {
 
     if (!liveChatId) {
+
         return;
     }
 
 
     let url =
+
         "https://www.googleapis.com/youtube/v3/liveChat/messages" +
 
         "?liveChatId=" +
@@ -430,7 +526,9 @@ async function getChatMessages() {
     if (nextPageToken) {
 
         url +=
+
             "&pageToken=" +
+
             encodeURIComponent(
                 nextPageToken
             );
@@ -458,6 +556,7 @@ async function getChatMessages() {
 
 
         nextPageToken =
+
             data.nextPageToken ||
             null;
 
@@ -468,124 +567,159 @@ async function getChatMessages() {
         ) {
 
             const author =
+
                 item.authorDetails
                     ?.displayName ||
+
                 "مستخدم";
 
 
             const message =
+
                 item.snippet
                     ?.displayMessage ||
+
                 "";
 
 
             if (!message) {
+
                 continue;
             }
 
 
             // =================================
-            // 1. عرض الرسالة في البث المباشر
+            // حفظ الرسالة أولًا
             // =================================
 
-            addLiveMessage(
-                author,
-                message
-            );
+            const saved =
+
+                await saveMessageToSupabase(
+
+                    item.id,
+
+                    author,
+
+                    message
+
+                );
 
 
             // =================================
-            // 2. حفظ الرسالة في Supabase
+            // بعد نجاح الحفظ
+            // عرض الرسالة في البث
             // =================================
 
-            await saveMessageToSupabase(
+            if (saved) {
 
-                item.id,
+                addLiveMessage(
 
-                author,
+                    author,
 
-                message
-            );
+                    message
+
+                );
+            }
         }
 
 
         statusElement.textContent =
+
             "يتم استقبال الرسائل";
 
 
         const delay =
+
             Math.max(
+
                 data.pollingIntervalMillis ||
                     5000,
 
                 2000
+
             );
 
 
         setTimeout(
+
             getChatMessages,
+
             delay
+
         );
 
 
     } catch (error) {
 
         console.error(
+
             "Chat Error:",
+
             error
+
         );
 
 
         statusElement.textContent =
+
             "تعذر الاتصال";
 
 
         setTimeout(
+
             getChatMessages,
+
             5000
+
         );
     }
 }
 
 
 // =====================================================
-// تشغيل الموقع
+// تشغيل التطبيق
 // =====================================================
 
 async function start() {
 
     try {
 
-        // تحميل الرسائل المحفوظة
+        // تحميل الأرشيف
         await loadArchive();
 
 
-        // الاستماع للرسائل الجديدة
+        // تشغيل Realtime
         subscribeToArchive();
 
 
         // الحصول على Live Chat ID
         liveChatId =
+
             await getLiveChatId();
 
 
         statusElement.textContent =
+
             "متصل";
 
 
-        // بدء قراءة البث
+        // بدء قراءة الرسائل
         getChatMessages();
 
 
     } catch (error) {
 
         console.error(
+
             "Start Error:",
+
             error
+
         );
 
 
         statusElement.textContent =
+
             error.message;
     }
 }
