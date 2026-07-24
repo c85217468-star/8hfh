@@ -11,94 +11,163 @@
 const VIDEO_ID = "WnN_epmXuls";
 
 // ============================================================
-// 2. رابط Supabase Edge Function
+// 2. إعدادات Supabase
 // ============================================================
 
-const WORKER_URL =
-    "https://urpwmgntrdzooemnvccx.supabase.co/functions/v1/smart-worker";
+const SUPABASE_URL =
+    "https://urpwmgntrdzooemnvccx.supabase.co";
+
+// ضع Publishable Key الخاص بـ Supabase هنا
+const SUPABASE_PUBLISHABLE_KEY =
+    "ضع_مفتاح_Supabase_Publishable_هنا";
 
 // ============================================================
-// 3. إعدادات النظام
+// 3. إعدادات YouTube
 // ============================================================
 
-const POLLING_INTERVAL = 30000;
-
-let isRunning = false;
-let timer = null;
+// لا تضع مفتاح YouTube السري هنا إذا كان script.js
+// منشورًا للعامة على GitHub.
+// الأفضل أن يتم جلب بيانات YouTube من Edge Function.
+// هذا الكود يفترض وجود Edge Function لهذا الغرض.
 
 // ============================================================
-// 4. عناصر الصفحة
+// 4. إنشاء Supabase Client
+// ============================================================
+
+const supabaseClient =
+    window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+    );
+
+// ============================================================
+// 5. إعدادات النظام
+// ============================================================
+
+const POLLING_INTERVAL =
+    30000;
+
+let isRunning =
+    false;
+
+let timer =
+    null;
+
+let liveChatId =
+    null;
+
+let nextPageToken =
+    null;
+
+// ============================================================
+// 6. عناصر الواجهة
 // ============================================================
 
 const elements = {
+
     messages:
-        document.getElementById("messages"),
+        document.getElementById(
+            "messages"
+        ),
 
     status:
-        document.getElementById("status"),
+        document.getElementById(
+            "status"
+        ),
 
     videoId:
-        document.getElementById("video-id"),
+        document.getElementById(
+            "video-id"
+        ),
 
     liveChatId:
-        document.getElementById("live-chat-id"),
+        document.getElementById(
+            "live-chat-id"
+        ),
 
     messageCount:
-        document.getElementById("message-count"),
+        document.getElementById(
+            "message-count"
+        ),
 
     error:
-        document.getElementById("error")
+        document.getElementById(
+            "error"
+        )
+
 };
 
 // ============================================================
-// 5. أدوات الواجهة
+// 7. أدوات الواجهة
 // ============================================================
 
-function setStatus(text) {
+function setStatus(
+    text
+) {
 
-    if (elements.status) {
+    if (
+        elements.status
+    ) {
+
         elements.status.textContent =
             text;
+
     }
 
     console.log(
         "[STATUS]",
         text
     );
+
 }
 
 
-function setError(error) {
+function setError(
+    error
+) {
 
     const message =
+
         error instanceof Error
+
             ? error.message
+
             : String(error);
 
-    if (elements.error) {
+
+    if (
+        elements.error
+    ) {
+
         elements.error.textContent =
             message;
+
     }
+
 
     console.error(
         "[ERROR]",
         message
     );
+
 }
 
 
 function clearError() {
 
-    if (elements.error) {
+    if (
+        elements.error
+    ) {
+
         elements.error.textContent =
             "";
+
     }
 
 }
 
-
 // ============================================================
-// 6. التحقق من VIDEO_ID
+// 8. التحقق من VIDEO_ID
 // ============================================================
 
 function validateVideoId() {
@@ -115,6 +184,7 @@ function validateVideoId() {
 
     }
 
+
     if (
         VIDEO_ID.length <
         5
@@ -126,16 +196,18 @@ function validateVideoId() {
 
     }
 
+
     return true;
 
 }
 
-
 // ============================================================
-// 7. عرض معلومات البث
+// 9. تحديث معلومات البث
 // ============================================================
 
-function updateStreamInfo(data) {
+function updateStreamInfo(
+    data
+) {
 
     if (
         elements.videoId
@@ -171,9 +243,8 @@ function updateStreamInfo(data) {
 
 }
 
-
 // ============================================================
-// 8. إنشاء عنصر رسالة
+// 10. إنشاء عنصر الرسالة
 // ============================================================
 
 function createMessageElement(
@@ -219,11 +290,13 @@ function createMessageElement(
         author
     );
 
+
     wrapper.appendChild(
         document.createTextNode(
             ": "
         )
     );
+
 
     wrapper.appendChild(
         content
@@ -234,9 +307,8 @@ function createMessageElement(
 
 }
 
-
 // ============================================================
-// 9. عرض مجموعة رسائل
+// 11. عرض الرسائل
 // ============================================================
 
 function renderMessages(
@@ -246,7 +318,9 @@ function renderMessages(
     if (
         !elements.messages
     ) {
+
         return;
+
     }
 
 
@@ -260,6 +334,7 @@ function renderMessages(
                 message
             );
 
+
         elements.messages.appendChild(
             element
         );
@@ -267,76 +342,58 @@ function renderMessages(
     }
 
 
-    // النزول لآخر رسالة
     elements.messages.scrollTop =
         elements.messages.scrollHeight;
 
 }
 
-
 // ============================================================
-// 10. استدعاء Smart Worker
+// 12. قراءة الرسائل المؤرشفة من Supabase
 // ============================================================
 
-async function callWorker() {
-
-    validateVideoId();
+async function loadArchivedMessages() {
 
     clearError();
 
-    setStatus(
-        "جاري مزامنة البث..."
-    );
 
+    const {
+        data,
+        error
+    } =
 
-    const response =
-        await fetch(
-            WORKER_URL,
-            {
+        await supabaseClient
 
-                method:
-                    "POST",
+            .from(
+                "archived_messages"
+            )
 
-                headers: {
-                    "Content-Type":
-                        "application/json"
-                },
+            .select(
+                "*"
+            )
 
-                body:
-                    JSON.stringify({
-                        video_id:
-                            VIDEO_ID
-                    })
+            .eq(
+                "video_id",
+                VIDEO_ID
+            )
 
-            }
-        );
-
-
-    let data;
-
-    try {
-
-        data =
-            await response.json();
-
-    } catch {
-
-        throw new Error(
-            "استجابة غير صالحة من الخادم"
-        );
-
-    }
+            .order(
+                "created_at",
+                {
+                    ascending:
+                        true
+                }
+            );
 
 
     if (
-        !response.ok
+        error
     ) {
 
         throw new Error(
 
-            data?.error ??
+            "خطأ في قراءة الرسائل المؤرشفة: " +
 
-            `HTTP ${response.status}`
+            error.message
 
         );
 
@@ -344,38 +401,254 @@ async function callWorker() {
 
 
     if (
-        data.success !==
-        true
+        data &&
+        data.length > 0
     ) {
 
-        throw new Error(
-
-            data?.error ??
-
-            "فشل تنفيذ Smart Worker"
-
+        renderMessages(
+            data
         );
 
     }
 
 
-    updateStreamInfo(
-        data
-    );
+    if (
+        elements.messageCount
+    ) {
+
+        elements.messageCount.textContent =
+            data?.length ??
+            0;
+
+    }
 
 
-    setStatus(
-        "تمت المزامنة بنجاح"
-    );
-
-
-    return data;
+    return data ??
+        [];
 
 }
 
+// ============================================================
+// 13. حفظ رسالة في Supabase
+// ============================================================
+
+async function saveMessage(
+    message
+) {
+
+    const {
+        error
+    } =
+
+        await supabaseClient
+
+            .from(
+                "live_chat_messages"
+            )
+
+            .upsert(
+
+                {
+
+                    youtube_message_id:
+                        message.youtube_message_id,
+
+                    video_id:
+                        VIDEO_ID,
+
+                    author_name:
+                        message.author_name,
+
+                    message:
+                        message.message
+
+                },
+
+                {
+
+                    onConflict:
+                        "youtube_message_id"
+
+                }
+
+            );
+
+
+    if (
+        error
+    ) {
+
+        throw new Error(
+
+            "فشل حفظ الرسالة: " +
+
+            error.message
+
+        );
+
+    }
+
+}
 
 // ============================================================
-// 11. تشغيل النظام
+// 14. حفظ مجموعة رسائل
+// ============================================================
+
+async function saveMessages(
+    messages
+) {
+
+    if (
+        !messages ||
+        messages.length ===
+            0
+    ) {
+
+        return;
+
+    }
+
+
+    const rows =
+
+        messages.map(
+            message => ({
+
+                youtube_message_id:
+                    message.youtube_message_id,
+
+                video_id:
+                    VIDEO_ID,
+
+                author_name:
+                    message.author_name,
+
+                message:
+                    message.message
+
+            })
+        );
+
+
+    const {
+        error
+    } =
+
+        await supabaseClient
+
+            .from(
+                "live_chat_messages"
+            )
+
+            .upsert(
+
+                rows,
+
+                {
+
+                    onConflict:
+                        "youtube_message_id"
+
+                }
+
+            );
+
+
+    if (
+        error
+    ) {
+
+        throw new Error(
+
+            "فشل حفظ الرسائل: " +
+
+            error.message
+
+        );
+
+    }
+
+}
+
+// ============================================================
+// 15. تحميل الرسائل الجديدة من الأرشيف
+// ============================================================
+
+async function loadNewArchivedMessages() {
+
+    const {
+        data,
+        error
+    } =
+
+        await supabaseClient
+
+            .from(
+                "archived_messages"
+            )
+
+            .select(
+                "*"
+            )
+
+            .eq(
+                "video_id",
+                VIDEO_ID
+            )
+
+            .order(
+                "created_at",
+                {
+                    ascending:
+                        true
+                }
+            );
+
+
+    if (
+        error
+    ) {
+
+        throw new Error(
+
+            "خطأ في تحديث الأرشيف: " +
+
+            error.message
+
+        );
+
+    }
+
+
+    if (
+        data &&
+        data.length > 0
+    ) {
+
+        if (
+            elements.messages
+        ) {
+
+            elements.messages.innerHTML =
+                "";
+
+        }
+
+
+        renderMessages(
+            data
+        );
+
+    }
+
+
+    return data ??
+        [];
+
+}
+
+// ============================================================
+// 16. تشغيل النظام
 // ============================================================
 
 async function runSystem() {
@@ -395,7 +668,36 @@ async function runSystem() {
 
     try {
 
-        await callWorker();
+        clearError();
+
+
+        validateVideoId();
+
+
+        setStatus(
+            "جاري تحميل الرسائل..."
+        );
+
+
+        const messages =
+
+            await loadArchivedMessages();
+
+
+        if (
+            elements.messageCount
+        ) {
+
+            elements.messageCount.textContent =
+                messages.length;
+
+        }
+
+
+        setStatus(
+            "تم تحميل الرسائل بنجاح"
+        );
+
 
     } catch (
         error
@@ -404,6 +706,7 @@ async function runSystem() {
         setStatus(
             "حدث خطأ"
         );
+
 
         setError(
             error
@@ -418,9 +721,8 @@ async function runSystem() {
 
 }
 
-
 // ============================================================
-// 12. التشغيل الدوري
+// 17. التشغيل الدوري
 // ============================================================
 
 function startPolling() {
@@ -429,6 +731,7 @@ function startPolling() {
 
 
     timer =
+
         setInterval(
 
             () => {
@@ -448,9 +751,8 @@ function startPolling() {
 
 }
 
-
 // ============================================================
-// 13. إيقاف التشغيل الدوري
+// 18. إيقاف التشغيل الدوري
 // ============================================================
 
 function stopPolling() {
@@ -462,6 +764,7 @@ function stopPolling() {
         clearInterval(
             timer
         );
+
 
         timer =
             null;
@@ -475,9 +778,8 @@ function stopPolling() {
 
 }
 
-
 // ============================================================
-// 14. بدء النظام
+// 19. بدء النظام
 // ============================================================
 
 async function startSystem() {
@@ -486,9 +788,11 @@ async function startSystem() {
         "================================"
     );
 
+
     console.log(
         "SMART LIVE CHAT SYSTEM"
     );
+
 
     console.log(
         "================================"
@@ -505,9 +809,12 @@ async function startSystem() {
 
         validateVideoId();
 
+
         await runSystem();
 
+
         startPolling();
+
 
     } catch (
         error
@@ -521,21 +828,27 @@ async function startSystem() {
 
 }
 
-
 // ============================================================
-// 15. إيقاف النظام عند مغادرة الصفحة
+// 20. إيقاف النظام
 // ============================================================
 
 window.addEventListener(
+
     "beforeunload",
+
     () => {
 
         stopPolling();
 
     }
+
 );
 
+// ============================================================
+// 21. تشغيل النظام
+// ============================================================
 
+startSystem();
 // ============================================================
 // 16. تشغيل النظام
 // ============================================================
