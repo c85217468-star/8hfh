@@ -1,201 +1,543 @@
-// =====================================================
-// SMART LIVE STREAM CLIENT
-// =====================================================
+// ============================================================
+// SMART LIVE CHAT SYSTEM
+// script.js
+// ============================================================
 
-// =====================================================
-// 1) تحديد البث
-// =====================================================
+// ============================================================
+// 1. إعدادات البث
+// ============================================================
 
-// ضع VIDEO_ID الخاص بالبث هنا فقط
+// غيّر هذا فقط عند تغيير البث
 const VIDEO_ID = "WnN_epmXuls";
 
-// أو يمكنك وضع رابط YouTube هنا:
-// const STREAM_URL = "https://www.youtube.com/watch?v=WnN_epmXuls";
+// ============================================================
+// 2. رابط Supabase Edge Function
+// ============================================================
 
-// =====================================================
-// 2) استخراج VIDEO_ID من رابط YouTube (اختياري)
-// =====================================================
+const WORKER_URL =
+    "https://urpwmgntrdzooemnvccx.supabase.co/functions/v1/smart-worker";
 
-function getVideoId(input) {
-    if (!input) {
-        throw new Error("لم يتم تحديد رابط أو ID البث");
+// ============================================================
+// 3. إعدادات النظام
+// ============================================================
+
+const POLLING_INTERVAL = 30000;
+
+let isRunning = false;
+let timer = null;
+
+// ============================================================
+// 4. عناصر الصفحة
+// ============================================================
+
+const elements = {
+    messages:
+        document.getElementById("messages"),
+
+    status:
+        document.getElementById("status"),
+
+    videoId:
+        document.getElementById("video-id"),
+
+    liveChatId:
+        document.getElementById("live-chat-id"),
+
+    messageCount:
+        document.getElementById("message-count"),
+
+    error:
+        document.getElementById("error")
+};
+
+// ============================================================
+// 5. أدوات الواجهة
+// ============================================================
+
+function setStatus(text) {
+
+    if (elements.status) {
+        elements.status.textContent =
+            text;
     }
 
-    // إذا كان المستخدم وضع ID مباشرة
-    if (!input.includes("youtube.com") &&
-        !input.includes("youtu.be")) {
-        return input.trim();
-    }
-
-    try {
-        const url = new URL(input);
-
-        // youtube.com/watch?v=VIDEO_ID
-        if (url.searchParams.has("v")) {
-            return url.searchParams.get("v");
-        }
-
-        // youtu.be/VIDEO_ID
-        if (url.hostname === "youtu.be") {
-            return url.pathname.substring(1);
-        }
-
-        throw new Error("رابط YouTube غير صالح");
-
-    } catch (error) {
-        throw new Error(
-            "تعذر استخراج VIDEO_ID من الرابط"
-        );
-    }
+    console.log(
+        "[STATUS]",
+        text
+    );
 }
 
-// =====================================================
-// 3) تحديد المصدر
-// =====================================================
 
-// الخيار الأول: ID مباشر
-const CURRENT_VIDEO_ID = getVideoId(VIDEO_ID);
+function setError(error) {
 
-// الخيار الثاني إذا أردت استخدام الرابط:
-// const CURRENT_VIDEO_ID = getVideoId(STREAM_URL);
+    const message =
+        error instanceof Error
+            ? error.message
+            : String(error);
 
-// =====================================================
-// 4) عرض معلومات البث
-// =====================================================
-
-console.log(
-    "===================================="
-);
-
-console.log(
-    "SMART LIVE STREAM"
-);
-
-console.log(
-    "===================================="
-);
-
-console.log(
-    "VIDEO ID:",
-    CURRENT_VIDEO_ID
-);
-
-console.log(
-    "YouTube URL:",
-    `https://www.youtube.com/watch?v=${CURRENT_VIDEO_ID}`
-);
-
-// =====================================================
-// 5) رابط YouTube API للحصول على بيانات البث
-// =====================================================
-
-// ضع مفتاح YouTube API في متغير البيئة
-const YOUTUBE_API_KEY =
-    "ضع_مفتاح_YouTube_API_هنا";
-
-async function getLiveStreamInfo() {
-
-    const url =
-        "https://www.googleapis.com/youtube/v3/videos" +
-        "?part=snippet,liveStreamingDetails" +
-        "&id=" +
-        encodeURIComponent(CURRENT_VIDEO_ID) +
-        "&key=" +
-        encodeURIComponent(YOUTUBE_API_KEY);
-
-    const response =
-        await fetch(url);
-
-    const data =
-        await response.json();
-
-    if (data.error) {
-        throw new Error(
-            data.error.message
-        );
+    if (elements.error) {
+        elements.error.textContent =
+            message;
     }
 
-    if (!data.items || data.items.length === 0) {
-        throw new Error(
-            "لم يتم العثور على الفيديو"
-        );
-    }
-
-    const video =
-        data.items[0];
-
-    const liveDetails =
-        video.liveStreamingDetails;
-
-    return {
-        videoId: CURRENT_VIDEO_ID,
-
-        title:
-            video.snippet?.title ?? null,
-
-        channelTitle:
-            video.snippet?.channelTitle ?? null,
-
-        liveChatId:
-            liveDetails?.activeLiveChatId ?? null,
-
-        scheduledStartTime:
-            liveDetails?.scheduledStartTime ?? null,
-
-        actualStartTime:
-            liveDetails?.actualStartTime ?? null,
-
-        actualEndTime:
-            liveDetails?.actualEndTime ?? null
-    };
+    console.error(
+        "[ERROR]",
+        message
+    );
 }
 
-// =====================================================
-// 6) تشغيل الفحص
-// =====================================================
 
-async function start() {
+function clearError() {
 
-    try {
+    if (elements.error) {
+        elements.error.textContent =
+            "";
+    }
 
-        const stream =
-            await getLiveStreamInfo();
+}
 
-        console.log(
-            "Stream information:",
-            stream
+
+// ============================================================
+// 6. التحقق من VIDEO_ID
+// ============================================================
+
+function validateVideoId() {
+
+    if (
+        !VIDEO_ID ||
+        typeof VIDEO_ID !==
+            "string"
+    ) {
+
+        throw new Error(
+            "VIDEO_ID غير موجود"
         );
 
-        if (!stream.liveChatId) {
+    }
 
-            console.log(
-                "لا توجد Live Chat نشطة حاليًا."
+    if (
+        VIDEO_ID.length <
+        5
+    ) {
+
+        throw new Error(
+            "VIDEO_ID غير صالح"
+        );
+
+    }
+
+    return true;
+
+}
+
+
+// ============================================================
+// 7. عرض معلومات البث
+// ============================================================
+
+function updateStreamInfo(data) {
+
+    if (
+        elements.videoId
+    ) {
+
+        elements.videoId.textContent =
+            data.video_id ??
+            VIDEO_ID;
+
+    }
+
+
+    if (
+        elements.liveChatId
+    ) {
+
+        elements.liveChatId.textContent =
+            data.live_chat_id ??
+            "غير متوفر";
+
+    }
+
+
+    if (
+        elements.messageCount
+    ) {
+
+        elements.messageCount.textContent =
+            data.saved_messages ??
+            0;
+
+    }
+
+}
+
+
+// ============================================================
+// 8. إنشاء عنصر رسالة
+// ============================================================
+
+function createMessageElement(
+    message
+) {
+
+    const wrapper =
+        document.createElement(
+            "div"
+        );
+
+    wrapper.className =
+        "chat-message";
+
+
+    const author =
+        document.createElement(
+            "strong"
+        );
+
+    author.className =
+        "chat-author";
+
+    author.textContent =
+        message.author_name ??
+        "مستخدم";
+
+
+    const content =
+        document.createElement(
+            "span"
+        );
+
+    content.className =
+        "chat-content";
+
+    content.textContent =
+        message.message ??
+        "";
+
+
+    wrapper.appendChild(
+        author
+    );
+
+    wrapper.appendChild(
+        document.createTextNode(
+            ": "
+        )
+    );
+
+    wrapper.appendChild(
+        content
+    );
+
+
+    return wrapper;
+
+}
+
+
+// ============================================================
+// 9. عرض مجموعة رسائل
+// ============================================================
+
+function renderMessages(
+    messages
+) {
+
+    if (
+        !elements.messages
+    ) {
+        return;
+    }
+
+
+    for (
+        const message
+        of messages
+    ) {
+
+        const element =
+            createMessageElement(
+                message
             );
 
-            return;
-        }
-
-        console.log(
-            "Live Chat ID:",
-            stream.liveChatId
-        );
-
-        console.log(
-            "البث جاهز للمزامنة."
-        );
-
-    } catch (error) {
-
-        console.error(
-            "حدث خطأ:",
-            error.message
+        elements.messages.appendChild(
+            element
         );
 
     }
+
+
+    // النزول لآخر رسالة
+    elements.messages.scrollTop =
+        elements.messages.scrollHeight;
+
 }
 
-// =====================================================
-// 7) بدء البرنامج
-// =====================================================
 
-start();
+// ============================================================
+// 10. استدعاء Smart Worker
+// ============================================================
+
+async function callWorker() {
+
+    validateVideoId();
+
+    clearError();
+
+    setStatus(
+        "جاري مزامنة البث..."
+    );
+
+
+    const response =
+        await fetch(
+            WORKER_URL,
+            {
+
+                method:
+                    "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        video_id:
+                            VIDEO_ID
+                    })
+
+            }
+        );
+
+
+    let data;
+
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        throw new Error(
+            "استجابة غير صالحة من الخادم"
+        );
+
+    }
+
+
+    if (
+        !response.ok
+    ) {
+
+        throw new Error(
+
+            data?.error ??
+
+            `HTTP ${response.status}`
+
+        );
+
+    }
+
+
+    if (
+        data.success !==
+        true
+    ) {
+
+        throw new Error(
+
+            data?.error ??
+
+            "فشل تنفيذ Smart Worker"
+
+        );
+
+    }
+
+
+    updateStreamInfo(
+        data
+    );
+
+
+    setStatus(
+        "تمت المزامنة بنجاح"
+    );
+
+
+    return data;
+
+}
+
+
+// ============================================================
+// 11. تشغيل النظام
+// ============================================================
+
+async function runSystem() {
+
+    if (
+        isRunning
+    ) {
+
+        return;
+
+    }
+
+
+    isRunning =
+        true;
+
+
+    try {
+
+        await callWorker();
+
+    } catch (
+        error
+    ) {
+
+        setStatus(
+            "حدث خطأ"
+        );
+
+        setError(
+            error
+        );
+
+    } finally {
+
+        isRunning =
+            false;
+
+    }
+
+}
+
+
+// ============================================================
+// 12. التشغيل الدوري
+// ============================================================
+
+function startPolling() {
+
+    stopPolling();
+
+
+    timer =
+        setInterval(
+
+            () => {
+
+                runSystem();
+
+            },
+
+            POLLING_INTERVAL
+
+        );
+
+
+    console.log(
+        "Polling started"
+    );
+
+}
+
+
+// ============================================================
+// 13. إيقاف التشغيل الدوري
+// ============================================================
+
+function stopPolling() {
+
+    if (
+        timer
+    ) {
+
+        clearInterval(
+            timer
+        );
+
+        timer =
+            null;
+
+    }
+
+
+    console.log(
+        "Polling stopped"
+    );
+
+}
+
+
+// ============================================================
+// 14. بدء النظام
+// ============================================================
+
+async function startSystem() {
+
+    console.log(
+        "================================"
+    );
+
+    console.log(
+        "SMART LIVE CHAT SYSTEM"
+    );
+
+    console.log(
+        "================================"
+    );
+
+
+    console.log(
+        "VIDEO_ID:",
+        VIDEO_ID
+    );
+
+
+    try {
+
+        validateVideoId();
+
+        await runSystem();
+
+        startPolling();
+
+    } catch (
+        error
+    ) {
+
+        setError(
+            error
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// 15. إيقاف النظام عند مغادرة الصفحة
+// ============================================================
+
+window.addEventListener(
+    "beforeunload",
+    () => {
+
+        stopPolling();
+
+    }
+);
+
+
+// ============================================================
+// 16. تشغيل النظام
+// ============================================================
+
+startSystem();
