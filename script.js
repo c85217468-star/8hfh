@@ -1,884 +1,201 @@
 // =====================================================
-// إعدادات YouTube
+// SMART LIVE STREAM CLIENT
 // =====================================================
 
-// ضع مفتاح YouTube API الجديد هنا
-const YOUTUBE_API_KEY =
-    "AIzaSyCzX3_-OPo7oiDpBNmUS5mLBdzBBSFDsfc";
-
-
-const VIDEO_ID =
-    "WnN_epmXuls";
-
-
 // =====================================================
-// إعدادات Supabase
+// 1) تحديد البث
 // =====================================================
 
-const SUPABASE_URL =
-    "https://urpwmgntrdzooemnvccx.supabase.co";
+// ضع VIDEO_ID الخاص بالبث هنا فقط
+const VIDEO_ID = "WnN_epmXuls";
 
-
-const SUPABASE_KEY =
-    "sb_publishable_RxvIR8pqoTnrc1SSzBmbbQ_7691v21m";
-
+// أو يمكنك وضع رابط YouTube هنا:
+// const STREAM_URL = "https://www.youtube.com/watch?v=WnN_epmXuls";
 
 // =====================================================
-// إنشاء اتصال Supabase
+// 2) استخراج VIDEO_ID من رابط YouTube (اختياري)
 // =====================================================
 
-const supabaseClient =
-    window.supabase.createClient(
-        SUPABASE_URL,
-        SUPABASE_KEY
-    );
-
-
-// =====================================================
-// عناصر الصفحة
-// =====================================================
-
-const livePage =
-    document.getElementById(
-        "livePage"
-    );
-
-
-const archivePage =
-    document.getElementById(
-        "archivePage"
-    );
-
-
-const liveChatElement =
-    document.getElementById(
-        "liveChat"
-    );
-
-
-const archiveChatElement =
-    document.getElementById(
-        "archiveChat"
-    );
-
-
-const statusElement =
-    document.getElementById(
-        "status"
-    );
-
-
-const archiveCountElement =
-    document.getElementById(
-        "archiveCount"
-    );
-
-
-const openArchiveButton =
-    document.getElementById(
-        "openArchiveButton"
-    );
-
-
-const backToLiveButton =
-    document.getElementById(
-        "backToLiveButton"
-    );
-
-
-// =====================================================
-// متغيرات النظام
-// =====================================================
-
-let liveChatId = null;
-
-let nextPageToken = null;
-
-let archiveCount = 0;
-
-
-// =====================================================
-// منع تكرار رسائل الأرشيف
-// =====================================================
-
-const displayedArchiveMessages =
-    new Set();
-
-
-// =====================================================
-// منع تكرار رسائل البث
-// =====================================================
-
-const displayedLiveMessages =
-    new Set();
-
-
-// =====================================================
-// إنشاء عنصر رسالة
-// =====================================================
-
-function createMessageElement(
-    author,
-    message
-) {
-
-    const messageElement =
-        document.createElement(
-            "div"
-        );
-
-
-    messageElement.className =
-        "message";
-
-
-    const authorElement =
-        document.createElement(
-            "div"
-        );
-
-
-    authorElement.className =
-        "author";
-
-
-    authorElement.textContent =
-        author;
-
-
-    const textElement =
-        document.createElement(
-            "div"
-        );
-
-
-    textElement.className =
-        "text";
-
-
-    textElement.textContent =
-        message;
-
-
-    messageElement.appendChild(
-        authorElement
-    );
-
-
-    messageElement.appendChild(
-        textElement
-    );
-
-
-    return messageElement;
-
-}
-
-
-// =====================================================
-// إضافة رسالة للبث المباشر
-// =====================================================
-
-function addLiveMessage(
-    messageId,
-    author,
-    message
-) {
-
-    if (
-        displayedLiveMessages.has(
-            messageId
-        )
-    ) {
-
-        return;
-
+function getVideoId(input) {
+    if (!input) {
+        throw new Error("لم يتم تحديد رابط أو ID البث");
     }
 
-
-    displayedLiveMessages.add(
-        messageId
-    );
-
-
-    const element =
-        createMessageElement(
-            author,
-            message
-        );
-
-
-    liveChatElement.appendChild(
-        element
-    );
-
-
-    liveChatElement.scrollTop =
-        liveChatElement.scrollHeight;
-
-}
-
-
-// =====================================================
-// إضافة رسالة للأرشيف
-// =====================================================
-
-function addArchiveMessage(
-    messageId,
-    author,
-    message
-) {
-
-    if (
-        displayedArchiveMessages.has(
-            messageId
-        )
-    ) {
-
-        return;
-
+    // إذا كان المستخدم وضع ID مباشرة
+    if (!input.includes("youtube.com") &&
+        !input.includes("youtu.be")) {
+        return input.trim();
     }
-
-
-    displayedArchiveMessages.add(
-        messageId
-    );
-
-
-    const element =
-        createMessageElement(
-            author,
-            message
-        );
-
-
-    archiveChatElement.appendChild(
-        element
-    );
-
-
-    archiveCount++;
-
-
-    archiveCountElement.textContent =
-        archiveCount +
-        " رسالة";
-
-}
-
-
-// =====================================================
-// حفظ مجموعة رسائل في Supabase
-// =====================================================
-
-async function saveMessagesToSupabase(
-    messages
-) {
-
-    if (
-        !messages.length
-    ) {
-
-        return true;
-
-    }
-
-
-    const rows =
-        messages.map(
-            item => ({
-
-                youtube_message_id:
-                    item.id,
-
-                author_name:
-                    item.authorDetails
-                        ?.displayName ||
-                    "مستخدم",
-
-                message:
-                    item.snippet
-                        ?.displayMessage ||
-                    "",
-
-                video_id:
-                    VIDEO_ID
-
-            })
-        );
-
-
-    const {
-        error
-    } =
-        await supabaseClient
-
-            .from(
-                "live_chat_messages"
-            )
-
-            .upsert(
-
-                rows,
-
-                {
-
-                    onConflict:
-                        "youtube_message_id",
-
-                    ignoreDuplicates:
-                        true
-
-                }
-
-            );
-
-
-    if (error) {
-
-        console.error(
-            "Supabase Error:",
-            error
-        );
-
-
-        return false;
-
-    }
-
-
-    return true;
-
-}
-
-
-// =====================================================
-// تحميل الأرشيف القديم
-// =====================================================
-
-async function loadArchive() {
 
     try {
+        const url = new URL(input);
 
-        const {
-            data,
-            error
-        } =
-            await supabaseClient
-
-                .from(
-                    "live_chat_messages"
-                )
-
-                .select(
-                    "youtube_message_id, author_name, message, created_at"
-                )
-
-                .eq(
-                    "video_id",
-                    VIDEO_ID
-                )
-
-                .order(
-                    "created_at",
-                    {
-                        ascending:
-                            true
-                    }
-                );
-
-
-        if (error) {
-
-            console.error(
-                "Archive Error:",
-                error
-            );
-
-
-            return;
-
+        // youtube.com/watch?v=VIDEO_ID
+        if (url.searchParams.has("v")) {
+            return url.searchParams.get("v");
         }
 
-
-        for (
-            const item
-            of data || []
-        ) {
-
-            addArchiveMessage(
-
-                item.youtube_message_id,
-
-                item.author_name,
-
-                item.message
-
-            );
-
+        // youtu.be/VIDEO_ID
+        if (url.hostname === "youtu.be") {
+            return url.pathname.substring(1);
         }
 
+        throw new Error("رابط YouTube غير صالح");
 
     } catch (error) {
-
-        console.error(
-            "Archive Load Error:",
-            error
+        throw new Error(
+            "تعذر استخراج VIDEO_ID من الرابط"
         );
-
     }
-
 }
 
-
 // =====================================================
-// تشغيل Supabase Realtime
-// =====================================================
-
-function subscribeToArchive() {
-
-    supabaseClient
-
-        .channel(
-            "live-chat-archive"
-        )
-
-        .on(
-
-            "postgres_changes",
-
-            {
-
-                event:
-                    "INSERT",
-
-                schema:
-                    "public",
-
-                table:
-                    "live_chat_messages",
-
-                filter:
-                    `video_id=eq.${VIDEO_ID}`
-
-            },
-
-            payload => {
-
-                const message =
-                    payload.new;
-
-
-                addArchiveMessage(
-
-                    message.youtube_message_id,
-
-                    message.author_name,
-
-                    message.message
-
-                );
-
-            }
-
-        )
-
-        .subscribe(
-
-            status => {
-
-                console.log(
-                    "Realtime:",
-                    status
-                );
-
-            }
-
-        );
-
-}
-
-
-// =====================================================
-// الحصول على Live Chat ID
+// 3) تحديد المصدر
 // =====================================================
 
-async function getLiveChatId() {
+// الخيار الأول: ID مباشر
+const CURRENT_VIDEO_ID = getVideoId(VIDEO_ID);
+
+// الخيار الثاني إذا أردت استخدام الرابط:
+// const CURRENT_VIDEO_ID = getVideoId(STREAM_URL);
+
+// =====================================================
+// 4) عرض معلومات البث
+// =====================================================
+
+console.log(
+    "===================================="
+);
+
+console.log(
+    "SMART LIVE STREAM"
+);
+
+console.log(
+    "===================================="
+);
+
+console.log(
+    "VIDEO ID:",
+    CURRENT_VIDEO_ID
+);
+
+console.log(
+    "YouTube URL:",
+    `https://www.youtube.com/watch?v=${CURRENT_VIDEO_ID}`
+);
+
+// =====================================================
+// 5) رابط YouTube API للحصول على بيانات البث
+// =====================================================
+
+// ضع مفتاح YouTube API في متغير البيئة
+const YOUTUBE_API_KEY =
+    "ضع_مفتاح_YouTube_API_هنا";
+
+async function getLiveStreamInfo() {
 
     const url =
-
         "https://www.googleapis.com/youtube/v3/videos" +
-
-        "?part=liveStreamingDetails" +
-
+        "?part=snippet,liveStreamingDetails" +
         "&id=" +
-        encodeURIComponent(
-            VIDEO_ID
-        ) +
-
+        encodeURIComponent(CURRENT_VIDEO_ID) +
         "&key=" +
-        encodeURIComponent(
-            YOUTUBE_API_KEY
-        );
-
+        encodeURIComponent(YOUTUBE_API_KEY);
 
     const response =
-        await fetch(
-            url
-        );
-
+        await fetch(url);
 
     const data =
         await response.json();
 
-
-    if (
-        data.error
-    ) {
-
+    if (data.error) {
         throw new Error(
             data.error.message
         );
-
     }
 
-
-    if (
-        !data.items ||
-        data.items.length === 0
-    ) {
-
+    if (!data.items || data.items.length === 0) {
         throw new Error(
-            "لم يتم العثور على البث"
+            "لم يتم العثور على الفيديو"
         );
-
     }
 
+    const video =
+        data.items[0];
 
     const liveDetails =
-        data.items[0]
-            .liveStreamingDetails;
+        video.liveStreamingDetails;
 
+    return {
+        videoId: CURRENT_VIDEO_ID,
 
-    if (
-        !liveDetails ||
-        !liveDetails.activeLiveChatId
-    ) {
+        title:
+            video.snippet?.title ?? null,
 
-        throw new Error(
-            "لا توجد دردشة مباشرة نشطة"
-        );
+        channelTitle:
+            video.snippet?.channelTitle ?? null,
 
-    }
+        liveChatId:
+            liveDetails?.activeLiveChatId ?? null,
 
+        scheduledStartTime:
+            liveDetails?.scheduledStartTime ?? null,
 
-    return liveDetails.activeLiveChatId;
+        actualStartTime:
+            liveDetails?.actualStartTime ?? null,
 
+        actualEndTime:
+            liveDetails?.actualEndTime ?? null
+    };
 }
 
-
 // =====================================================
-// جلب رسائل YouTube
-// =====================================================
-
-async function getChatMessages() {
-
-    if (
-        !liveChatId
-    ) {
-
-        return;
-
-    }
-
-
-    let url =
-
-        "https://www.googleapis.com/youtube/v3/liveChat/messages" +
-
-        "?liveChatId=" +
-        encodeURIComponent(
-            liveChatId
-        ) +
-
-        "&part=snippet,authorDetails" +
-
-        "&maxResults=200" +
-
-        "&key=" +
-        encodeURIComponent(
-            YOUTUBE_API_KEY
-        );
-
-
-    if (
-        nextPageToken
-    ) {
-
-        url +=
-
-            "&pageToken=" +
-
-            encodeURIComponent(
-                nextPageToken
-            );
-
-    }
-
-
-    try {
-
-        const response =
-            await fetch(
-                url
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (
-            data.error
-        ) {
-
-            throw new Error(
-                data.error.message
-            );
-
-        }
-
-
-        nextPageToken =
-
-            data.nextPageToken ||
-            null;
-
-
-        const messages =
-            data.items || [];
-
-
-        const validMessages =
-
-            messages.filter(
-
-                item =>
-
-                    item.snippet
-                        ?.displayMessage
-
-            );
-
-
-        // =========================================
-        // عرض الرسائل مباشرة في البث
-        // =========================================
-
-        for (
-            const item
-            of validMessages
-        ) {
-
-            const author =
-
-                item.authorDetails
-                    ?.displayName ||
-
-                "مستخدم";
-
-
-            const message =
-
-                item.snippet
-                    ?.displayMessage ||
-
-                "";
-
-
-            addLiveMessage(
-
-                item.id,
-
-                author,
-
-                message
-
-            );
-
-        }
-
-
-        // =========================================
-        // حفظ الرسائل في Supabase
-        // =========================================
-
-        await saveMessagesToSupabase(
-
-            validMessages
-
-        );
-
-
-        // =========================================
-        // الانتظار حسب تعليمات YouTube
-        // =========================================
-
-        const delay =
-
-            Math.max(
-
-                data.pollingIntervalMillis ||
-                    5000,
-
-                1000
-
-            );
-
-
-        setTimeout(
-
-            getChatMessages,
-
-            delay
-
-        );
-
-
-    } catch (error) {
-
-        console.error(
-
-            "Chat Error:",
-
-            error
-
-        );
-
-
-        statusElement.textContent =
-
-            "تعذر الاتصال";
-
-
-        setTimeout(
-
-            getChatMessages,
-
-            3000
-
-        );
-
-    }
-
-}
-
-
-// =====================================================
-// فتح صفحة الأرشيف
-// =====================================================
-
-openArchiveButton.addEventListener(
-
-    "click",
-
-    function () {
-
-        livePage.classList.remove(
-            "active"
-        );
-
-
-        archivePage.classList.add(
-            "active"
-        );
-
-    }
-
-);
-
-
-// =====================================================
-// العودة إلى البث
-// =====================================================
-
-backToLiveButton.addEventListener(
-
-    "click",
-
-    function () {
-
-        archivePage.classList.remove(
-            "active"
-        );
-
-
-        livePage.classList.add(
-            "active"
-        );
-
-    }
-
-);
-
-
-// =====================================================
-// تشغيل التطبيق
+// 6) تشغيل الفحص
 // =====================================================
 
 async function start() {
 
     try {
 
-        // تحميل الأرشيف القديم
+        const stream =
+            await getLiveStreamInfo();
 
-        await loadArchive();
+        console.log(
+            "Stream information:",
+            stream
+        );
 
+        if (!stream.liveChatId) {
 
-        // تشغيل Realtime
+            console.log(
+                "لا توجد Live Chat نشطة حاليًا."
+            );
 
-        subscribeToArchive();
+            return;
+        }
 
+        console.log(
+            "Live Chat ID:",
+            stream.liveChatId
+        );
 
-        // الحصول على البث
-
-        liveChatId =
-
-            await getLiveChatId();
-
-
-        statusElement.textContent =
-
-            "متصل";
-
-
-        // بدء جلب الرسائل
-
-        getChatMessages();
-
+        console.log(
+            "البث جاهز للمزامنة."
+        );
 
     } catch (error) {
 
         console.error(
-
-            "Start Error:",
-
-            error
-
+            "حدث خطأ:",
+            error.message
         );
 
-
-        statusElement.textContent =
-
-            error.message;
-
     }
-
 }
 
-
 // =====================================================
-// بدء التطبيق
+// 7) بدء البرنامج
 // =====================================================
 
 start();
