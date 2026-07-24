@@ -46,7 +46,7 @@ const SUPABASE_URL =
 
 // Put your Supabase Publishable Key here.
 const SUPABASE_PUBLISHABLE_KEY =
-    "ضع_مفتاح_Supabase_Publishable_Key_هنا";
+    "sb_publishable_RxvIR8pqoTnrc1SSzBmbbQ_7691v21m";
 
 
 // Create Supabase client.
