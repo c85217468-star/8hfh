@@ -1,55 +1,42 @@
-```javascript
 // ============================================================
 // SMART LIVE CHAT SYSTEM
 // script.js
 // ============================================================
 //
-// Flow:
+// الوظيفة:
 //
-// YouTube Live Chat
-//       ↓
-// Fetcher / Supabase Edge Function
-//       ↓
-// script.js
-//       ↓
-// live_chat_messages
-//       ↓
-// Supabase Trigger
-//       ↓
-// archived_messages
-//       ↓
-// Website
+// 1. VIDEO_ID يحدد البث الحالي.
+// 2. Edge Function تجلب الرسائل الجديدة من YouTube.
+// 3. الرسائل تحفظ في live_chat_messages.
+// 4. Supabase Trigger ينسخها إلى archived_messages.
+// 5. الموقع يعرض الرسائل من archived_messages.
+// 6. حذف التعليق من YouTube لا يحذف النسخة المؤرشفة.
 //
-// IMPORTANT:
-// - Change VIDEO_ID only when changing the live stream.
-// - Do NOT put the YouTube API secret key in this file.
-// - Do NOT put the Supabase Service Role Key in this file.
-// - Use only the Supabase Publishable Key in frontend code.
 // ============================================================
 
 
 // ============================================================
-// 1. LIVE STREAM CONFIGURATION
+// 1. إعداد البث
 // ============================================================
 
-// Change ONLY this when switching to another live stream.
+// غيّر هذا فقط عند الانتقال إلى بث آخر.
 const VIDEO_ID = "WnN_epmXuls";
 
 
 // ============================================================
-// 2. SUPABASE CONFIGURATION
+// 2. Supabase
 // ============================================================
 
 const SUPABASE_URL =
     "https://urpwmgntrdzooemnvccx.supabase.co";
 
 
-// Put your Supabase Publishable Key here.
+// ضع Publishable Key الخاص بمشروعك هنا.
 const SUPABASE_PUBLISHABLE_KEY =
     "sb_publishable_RxvIR8pqoTnrc1SSzBmbbQ_7691v21m";
 
 
-// Create Supabase client.
+// إنشاء عميل Supabase.
 const supabaseClient =
     window.supabase.createClient(
         SUPABASE_URL,
@@ -58,76 +45,57 @@ const supabaseClient =
 
 
 // ============================================================
-// 3. DATA FETCHER
+// 3. Edge Function
 // ============================================================
 //
-// This endpoint should return new YouTube live chat messages.
+// هذه الوظيفة مسؤولة عن:
+// - اكتشاف Live Chat ID
+// - جلب رسائل YouTube
+// - إدارة nextPageToken
+// - حفظ الرسائل في Supabase
 //
-// Expected response:
-//
-// {
-//     "success": true,
-//     "video_id": "...",
-//     "live_chat_id": "...",
-//     "next_page_token": "...",
-//     "messages": [
-//         {
-//             "youtube_message_id": "...",
-//             "author_name": "...",
-//             "message": "...",
-//             "created_at": "..."
-//         }
-//     ]
-// }
-//
-// IMPORTANT:
-// The Edge Function should securely communicate with YouTube API.
-// Do not expose the YouTube API key in this frontend file.
 // ============================================================
 
-const CHAT_FETCHER_URL =
-    `${SUPABASE_URL}/functions/v1/live-chat-fetcher`;
+const SYNC_FUNCTION_URL =
+    `${SUPABASE_URL}/functions/v1/live-chat-sync`;
 
 
 // ============================================================
-// 4. SYSTEM SETTINGS
+// 4. إعدادات النظام
 // ============================================================
 
-const POLLING_INTERVAL =
-    30000;
+const POLL_INTERVAL =
+    15000;
 
 const MAX_RETRIES =
     3;
 
-const RETRY_DELAY =
-    2000;
+const INITIAL_RETRY_DELAY =
+    1000;
 
 
 // ============================================================
-// 5. SYSTEM STATE
+// 5. حالة النظام
 // ============================================================
 
-let isRunning =
+let isSyncing =
     false;
 
-let timer =
+let pollingTimer =
     null;
 
-let retryCount =
-    0;
-
-let liveChatId =
+let currentLiveChatId =
     null;
 
-let nextPageToken =
+let currentNextPageToken =
     null;
 
-let totalMessages =
-    0;
+let systemStarted =
+    false;
 
 
 // ============================================================
-// 6. DOM ELEMENTS
+// 6. عناصر الصفحة
 // ============================================================
 
 const elements = {
@@ -166,7 +134,7 @@ const elements = {
 
 
 // ============================================================
-// 7. UI HELPERS
+// 7. أدوات الواجهة
 // ============================================================
 
 function setStatus(
@@ -190,7 +158,7 @@ function setStatus(
 }
 
 
-function setError(
+function showError(
     error
 ) {
 
@@ -236,7 +204,7 @@ function clearError() {
 
 
 // ============================================================
-// 8. VALIDATE CONFIGURATION
+// 8. التحقق من الإعدادات
 // ============================================================
 
 function validateConfiguration() {
@@ -248,7 +216,7 @@ function validateConfiguration() {
     ) {
 
         throw new Error(
-            "VIDEO_ID غير موجود."
+            "VIDEO_ID غير صالح."
         );
 
     }
@@ -260,7 +228,7 @@ function validateConfiguration() {
     ) {
 
         throw new Error(
-            "VIDEO_ID غير صالح."
+            "VIDEO_ID قصير أو غير صالح."
         );
 
     }
@@ -271,7 +239,7 @@ function validateConfiguration() {
     ) {
 
         throw new Error(
-            "Supabase URL غير موجود."
+            "SUPABASE_URL غير موجود."
         );
 
     }
@@ -285,7 +253,7 @@ function validateConfiguration() {
     ) {
 
         throw new Error(
-            "ضع Supabase Publishable Key الصحيح."
+            "يجب وضع Supabase Publishable Key."
         );
 
     }
@@ -294,11 +262,11 @@ function validateConfiguration() {
 
 
 // ============================================================
-// 9. UPDATE STREAM INFORMATION
+// 9. تحديث معلومات البث
 // ============================================================
 
 function updateStreamInfo(
-    data
+    data = {}
 ) {
 
     if (
@@ -317,92 +285,49 @@ function updateStreamInfo(
     ) {
 
         elements.liveChatId.textContent =
+
             data.live_chat_id ??
-            liveChatId ??
+
+            currentLiveChatId ??
+
             "غير متوفر";
 
     }
 
-
-    if (
-        elements.messageCount
-    ) {
-
-        elements.messageCount.textContent =
-            totalMessages;
-
-    }
-
 }
 
 
 // ============================================================
-// 10. NORMALIZE MESSAGE
-// ============================================================
-
-function normalizeMessage(
-    message
-) {
-
-    return {
-
-        youtube_message_id:
-
-            message.youtube_message_id ??
-            message.id ??
-            null,
-
-        video_id:
-
-            message.video_id ??
-            VIDEO_ID,
-
-        author_name:
-
-            message.author_name ??
-            message.authorDisplayName ??
-            "مستخدم",
-
-        message:
-
-            message.message ??
-            message.text ??
-            "",
-
-        created_at:
-
-            message.created_at ??
-            new Date().toISOString()
-
-    };
-
-}
-
-
-// ============================================================
-// 11. CREATE MESSAGE ELEMENT
+// 10. إنشاء رسالة
 // ============================================================
 
 function createMessageElement(
     message
 ) {
 
-    const wrapper =
+    const container =
         document.createElement(
             "div"
         );
 
 
-    wrapper.className =
+    container.className =
         "chat-message";
 
 
+    const messageId =
+
+        message.youtube_message_id ??
+
+        message.id;
+
+
     if (
-        message.youtube_message_id
+        messageId
     ) {
 
-        wrapper.dataset.messageId =
-            message.youtube_message_id;
+        container.dataset.messageId =
+            messageId;
 
     }
 
@@ -418,7 +343,9 @@ function createMessageElement(
 
 
     author.textContent =
+
         message.author_name ??
+
         "مستخدم";
 
 
@@ -433,37 +360,41 @@ function createMessageElement(
 
 
     content.textContent =
+
         message.message ??
+
         "";
 
 
-    wrapper.appendChild(
+    container.appendChild(
         author
     );
 
 
-    wrapper.appendChild(
+    container.appendChild(
+
         document.createTextNode(
             ": "
         )
+
     );
 
 
-    wrapper.appendChild(
+    container.appendChild(
         content
     );
 
 
-    return wrapper;
+    return container;
 
 }
 
 
 // ============================================================
-// 12. CHECK IF MESSAGE IS ALREADY DISPLAYED
+// 11. التحقق من وجود الرسالة
 // ============================================================
 
-function isMessageDisplayed(
+function messageAlreadyDisplayed(
     messageId
 ) {
 
@@ -477,7 +408,7 @@ function isMessageDisplayed(
     }
 
 
-    return Boolean(
+    const existing =
 
         elements.messages.querySelector(
 
@@ -485,15 +416,18 @@ function isMessageDisplayed(
                 messageId
             )}"]`
 
-        )
+        );
 
+
+    return Boolean(
+        existing
     );
 
 }
 
 
 // ============================================================
-// 13. RENDER ONE MESSAGE
+// 12. عرض رسالة واحدة
 // ============================================================
 
 function renderMessage(
@@ -509,16 +443,17 @@ function renderMessage(
     }
 
 
-    const normalized =
-        normalizeMessage(
-            message
-        );
+    const messageId =
+
+        message.youtube_message_id ??
+
+        message.id;
 
 
     if (
-        normalized.youtube_message_id &&
-        isMessageDisplayed(
-            normalized.youtube_message_id
+        messageId &&
+        messageAlreadyDisplayed(
+            messageId
         )
     ) {
 
@@ -528,8 +463,9 @@ function renderMessage(
 
 
     const element =
+
         createMessageElement(
-            normalized
+            message
         );
 
 
@@ -539,13 +475,14 @@ function renderMessage(
 
 
     elements.messages.scrollTop =
+
         elements.messages.scrollHeight;
 
 }
 
 
 // ============================================================
-// 14. RENDER MULTIPLE MESSAGES
+// 13. عرض مجموعة رسائل
 // ============================================================
 
 function renderMessages(
@@ -578,20 +515,16 @@ function renderMessages(
 
 
 // ============================================================
-// 15. LOAD ARCHIVED MESSAGES
+// 14. تحميل الأرشيف
 // ============================================================
 //
-// Reads archived messages from Supabase.
-// These messages are already stored in the database.
+// الأرشيف هو المصدر الدائم للعرض.
+// حتى لو اختفى التعليق من YouTube,
+// يبقى موجودًا هنا.
 //
 // ============================================================
 
-async function loadArchivedMessages() {
-
-    setStatus(
-        "جاري تحميل الرسائل المؤرشفة..."
-    );
-
+async function loadArchive() {
 
     const {
         data,
@@ -628,7 +561,7 @@ async function loadArchivedMessages() {
 
         throw new Error(
 
-            "فشل تحميل الرسائل المؤرشفة: " +
+            "فشل تحميل الأرشيف: " +
 
             error.message
 
@@ -652,128 +585,15 @@ async function loadArchivedMessages() {
     );
 
 
-    totalMessages =
-        data?.length ??
-        0;
-
-
-    updateStreamInfo({
-
-        video_id:
-            VIDEO_ID
-
-    });
-
-
-    return data ??
-        [];
-
-}
-
-
-// ============================================================
-// 16. SAVE NEW MESSAGES
-// ============================================================
-//
-// Messages are inserted ONCE into live_chat_messages.
-//
-// Supabase Trigger should automatically copy them
-// into archived_messages.
-//
-// ============================================================
-
-async function saveNewMessages(
-    messages
-) {
-
     if (
-        !Array.isArray(
-            messages
-        )
+        elements.messageCount
     ) {
 
-        return [];
+        elements.messageCount.textContent =
 
-    }
+            data?.length ??
 
-
-    if (
-        messages.length ===
-        0
-    ) {
-
-        return [];
-
-    }
-
-
-    const rows =
-
-        messages
-
-            .map(
-                normalizeMessage
-            )
-
-            .filter(
-
-                message =>
-
-                    message.youtube_message_id &&
-                    message.message
-
-            );
-
-
-    if (
-        rows.length ===
-        0
-    ) {
-
-        return [];
-
-    }
-
-
-    const {
-        data,
-        error
-    } =
-
-        await supabaseClient
-
-            .from(
-                "live_chat_messages"
-            )
-
-            .upsert(
-
-                rows,
-
-                {
-
-                    onConflict:
-                        "youtube_message_id",
-
-                    ignoreDuplicates:
-                        true
-
-                }
-
-            );
-
-
-    if (
-        error
-    ) {
-
-        throw new Error(
-
-            "فشل حفظ الرسائل في Supabase: " +
-
-            error.message
-
-        );
+            0;
 
     }
 
@@ -785,52 +605,47 @@ async function saveNewMessages(
 
 
 // ============================================================
-// 17. FETCH NEW LIVE CHAT MESSAGES
+// 15. طلب المزامنة
+// ============================================================
+//
+// لا نرسل الرسائل مباشرة من JavaScript.
+// Edge Function هي المسؤولة عن المزامنة.
 // ============================================================
 
-async function fetchLiveMessages() {
-
-    const url =
-        new URL(
-            CHAT_FETCHER_URL
-        );
-
-
-    url.searchParams.set(
-        "video_id",
-        VIDEO_ID
-    );
-
-
-    if (
-        nextPageToken
-    ) {
-
-        url.searchParams.set(
-            "page_token",
-            nextPageToken
-        );
-
-    }
-
+async function requestSync() {
 
     const response =
 
         await fetch(
 
-            url.toString(),
+            SYNC_FUNCTION_URL,
 
             {
 
                 method:
-                    "GET",
+                    "POST",
 
                 headers: {
 
                     "Content-Type":
                         "application/json"
 
-                }
+                },
+
+                body:
+
+                    JSON.stringify({
+
+                        video_id:
+                            VIDEO_ID,
+
+                        live_chat_id:
+                            currentLiveChatId,
+
+                        next_page_token:
+                            currentNextPageToken
+
+                    })
 
             }
 
@@ -848,7 +663,7 @@ async function fetchLiveMessages() {
     } catch {
 
         throw new Error(
-            "استجابة غير صالحة من خادم البث."
+            "استجابة غير صالحة من Edge Function."
         );
 
     }
@@ -882,112 +697,47 @@ async function fetchLiveMessages() {
 
             data.error ??
 
-            "فشل جلب رسائل البث."
+            "فشل تنفيذ المزامنة."
 
         );
 
     }
 
 
-    liveChatId =
+    return data;
 
-        data.live_chat_id ??
-
-        liveChatId;
+}
 
 
-    nextPageToken =
+// ============================================================
+// 16. مزامنة الأرشيف بعد جلب الرسائل
+// ============================================================
 
-        data.next_page_token ??
-
-        nextPageToken;
-
+async function refreshArchive() {
 
     const messages =
+        await loadArchive();
 
-        Array.isArray(
-            data.messages
-        )
-
-            ? data.messages
-
-            : [];
-
-
-    return {
-
-        ...data,
-
-        messages
-
-    };
-
-}
-
-
-// ============================================================
-// 18. PROCESS NEW MESSAGES
-// ============================================================
-
-async function processNewMessages(
-    messages
-) {
 
     if (
-        !messages ||
-        messages.length ===
-            0
+        elements.messageCount
     ) {
 
-        return;
+        elements.messageCount.textContent =
+
+            messages.length;
 
     }
 
-
-    const normalized =
-
-        messages.map(
-            normalizeMessage
-        );
-
-
-    // Save once to Supabase.
-    await saveNewMessages(
-        normalized
-    );
-
-
-    // Display immediately.
-    renderMessages(
-        normalized
-    );
-
-
-    totalMessages +=
-        normalized.length;
-
-
-    updateStreamInfo({
-
-        video_id:
-            VIDEO_ID,
-
-        live_chat_id:
-            liveChatId
-
-    });
-
 }
 
 
 // ============================================================
-// 19. RETRY HELPER
+// 17. إعادة المحاولة
 // ============================================================
 
-async function retryOperation(
-    operation,
-    attempts =
-        MAX_RETRIES
+async function withRetry(
+    operation
 ) {
 
     let lastError;
@@ -995,7 +745,9 @@ async function retryOperation(
 
     for (
         let attempt = 1;
-        attempt <= attempts;
+
+        attempt <= MAX_RETRIES;
+
         attempt++
     ) {
 
@@ -1013,7 +765,7 @@ async function retryOperation(
 
             console.warn(
 
-                `Retry ${attempt}/${attempts}`,
+                `[RETRY] ${attempt}/${MAX_RETRIES}`,
 
                 error
 
@@ -1021,26 +773,38 @@ async function retryOperation(
 
 
             if (
-                attempt <
-                attempts
+                attempt ===
+                MAX_RETRIES
             ) {
 
-                await new Promise(
-
-                    resolve =>
-
-                        setTimeout(
-
-                            resolve,
-
-                            RETRY_DELAY *
-                            attempt
-
-                        )
-
-                );
+                break;
 
             }
+
+
+            const delay =
+
+                INITIAL_RETRY_DELAY *
+
+                Math.pow(
+                    2,
+                    attempt - 1
+                );
+
+
+            await new Promise(
+
+                resolve =>
+
+                    setTimeout(
+
+                        resolve,
+
+                        delay
+
+                    )
+
+            );
 
         }
 
@@ -1053,13 +817,13 @@ async function retryOperation(
 
 
 // ============================================================
-// 20. RUN ONE SYNC CYCLE
+// 18. دورة المزامنة
 // ============================================================
 
-async function runSyncCycle() {
+async function syncOnce() {
 
     if (
-        isRunning
+        isSyncing
     ) {
 
         return;
@@ -1067,16 +831,13 @@ async function runSyncCycle() {
     }
 
 
-    isRunning =
+    isSyncing =
         true;
 
 
     try {
 
         clearError();
-
-
-        validateConfiguration();
 
 
         setStatus(
@@ -1086,19 +847,27 @@ async function runSyncCycle() {
 
         const result =
 
-            await retryOperation(
+            await withRetry(
 
                 () =>
-                    fetchLiveMessages()
+
+                    requestSync()
 
             );
 
 
-        await processNewMessages(
+        currentLiveChatId =
 
-            result.messages
+            result.live_chat_id ??
 
-        );
+            currentLiveChatId;
+
+
+        currentNextPageToken =
+
+            result.next_page_token ??
+
+            currentNextPageToken;
 
 
         updateStreamInfo({
@@ -1107,47 +876,63 @@ async function runSyncCycle() {
                 VIDEO_ID,
 
             live_chat_id:
-                result.live_chat_id ??
-                liveChatId
+                currentLiveChatId
 
         });
 
 
-        setStatus(
+        const newMessages =
 
-            result.messages.length > 0
+            Array.isArray(
+                result.messages
+            )
 
-                ? `تم استقبال ${result.messages.length} رسالة جديدة`
+                ? result.messages
 
-                : "لا توجد رسائل جديدة"
-
-        );
+                : [];
 
 
-        retryCount =
-            0;
+        if (
+            newMessages.length >
+            0
+        ) {
+
+            renderMessages(
+                newMessages
+            );
+
+
+            setStatus(
+
+                `تم استقبال ${newMessages.length} رسالة جديدة`
+
+            );
+
+        } else {
+
+            setStatus(
+                "النظام يعمل — لا توجد رسائل جديدة"
+            );
+
+        }
 
 
     } catch (
         error
     ) {
 
-        retryCount++;
+        showError(
+            error
+        );
 
 
         setStatus(
             "حدث خطأ أثناء المزامنة"
         );
 
-
-        setError(
-            error
-        );
-
-
     } finally {
 
-        isRunning =
+        isSyncing =
             false;
 
     }
@@ -1156,7 +941,7 @@ async function runSyncCycle() {
 
 
 // ============================================================
-// 21. START POLLING
+// 19. بدء المزامنة الدورية
 // ============================================================
 
 function startPolling() {
@@ -1164,17 +949,17 @@ function startPolling() {
     stopPolling();
 
 
-    timer =
+    pollingTimer =
 
         setInterval(
 
             () => {
 
-                runSyncCycle();
+                syncOnce();
 
             },
 
-            POLLING_INTERVAL
+            POLL_INTERVAL
 
         );
 
@@ -1187,21 +972,21 @@ function startPolling() {
 
 
 // ============================================================
-// 22. STOP POLLING
+// 20. إيقاف المزامنة
 // ============================================================
 
 function stopPolling() {
 
     if (
-        timer
+        pollingTimer
     ) {
 
         clearInterval(
-            timer
+            pollingTimer
         );
 
 
-        timer =
+        pollingTimer =
             null;
 
     }
@@ -1215,30 +1000,22 @@ function stopPolling() {
 
 
 // ============================================================
-// 23. INITIALIZE SYSTEM
+// 21. بدء النظام
 // ============================================================
 
 async function startSystem() {
 
-    console.log(
-        "===================================="
-    );
+    if (
+        systemStarted
+    ) {
+
+        return;
+
+    }
 
 
-    console.log(
-        "SMART LIVE CHAT SYSTEM"
-    );
-
-
-    console.log(
-        "VIDEO_ID:",
-        VIDEO_ID
-    );
-
-
-    console.log(
-        "===================================="
-    );
+    systemStarted =
+        true;
 
 
     try {
@@ -1254,30 +1031,41 @@ async function startSystem() {
         });
 
 
-        // First load existing archive.
-        await loadArchivedMessages();
+        setStatus(
+            "جاري تحميل الأرشيف..."
+        );
 
 
-        // Then fetch new live messages.
-        await runSyncCycle();
+        await loadArchive();
 
 
-        // Continue polling.
+        await syncOnce();
+
+
         startPolling();
+
+
+        console.log(
+            "[SYSTEM] Started successfully"
+        );
 
 
     } catch (
         error
     ) {
 
+        showError(
+            error
+        );
+
+
         setStatus(
             "فشل تشغيل النظام"
         );
 
 
-        setError(
-            error
-        );
+        systemStarted =
+            false;
 
     }
 
@@ -1285,7 +1073,7 @@ async function startSystem() {
 
 
 // ============================================================
-// 24. CLEANUP
+// 22. تنظيف النظام
 // ============================================================
 
 window.addEventListener(
@@ -1302,8 +1090,7 @@ window.addEventListener(
 
 
 // ============================================================
-// 25. START
+// 23. تشغيل
 // ============================================================
 
 startSystem();
-```
